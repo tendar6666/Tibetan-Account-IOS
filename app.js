@@ -54,7 +54,11 @@ const DEFAULT_ACCOUNT_HEADS = [
   // Party / Advance / Asset & Liability Account Heads (Dr = Asset Receivable, Cr = Liability Payable)
   { id: 'party_advance', group: 'party_jv', icon: '🤝', bo: 'ལས་མིའི་སྔ་འདོན།', en: 'Staff Advance A/c' },
   { id: 'party_pema', group: 'party_jv', icon: '👤', bo: 'པདྨ་ཆོས་སྒྲོན། (ཚོང་ཤག)', en: 'Pema Chodon (Customer A/c)' },
-  { id: 'party_ludhiana', group: 'party_jv', icon: '🏭', bo: 'ལུ་དྷི་ཡ་ན་བཟོ་གྲྭ།', en: 'Ludhiana Supplier A/c' }
+  { id: 'party_ludhiana', group: 'party_jv', icon: '🏭', bo: 'ལུ་དྷི་ཡ་ན་བཟོ་གྲྭ།', en: 'Ludhiana Supplier A/c' },
+
+  // Fund Account Heads (མ་དངུལ་རྩིས་འགོ། • Capital & Designated Funds: General Fund, Toilet Fund, etc.)
+  { id: 'fund_general', group: 'fund', icon: '🏛️', bo: 'སྤྱིར་བཏང་མ་དངུལ།', en: 'General Fund' },
+  { id: 'fund_toilet', group: 'fund', icon: '🚻', bo: 'གསང་སྤྱོད་རྒྱག་ཆེད་མ་དངུལ།', en: 'Toilet Construction Fund' }
 ];
 
 const CURRENCIES = {
@@ -68,6 +72,8 @@ const CURRENCIES = {
 const DEFAULT_STATE = {
   lang: 'bo_en', // 'bo_en' | 'bo' | 'en'
   currency: 'INR',
+  // Accounting Skill Level: 'basic' (Clean Cash In/Out for shopkeepers/elders) | 'advance' (Full Contra, JV, Trial Balance & BS)
+  accountingMode: 'basic',
   activeTab: 'ledger', // 'ledger' | 'heads' | 'account_ledger' | 'reports'
   ledgerFilter: 'all', // 'all' | 'RECEIPT' | 'PAYMENT' | 'CONTRA' | 'JV'
   ledgerDateFilter: '', // '' = Reset (show all transactions in period), or 'YYYY-MM-DD'
@@ -380,6 +386,7 @@ function loadState() {
         ...parsed,
         lang: savedConfig.lang || parsed.lang || DEFAULT_STATE.lang,
         currency: savedConfig.currency || parsed.currency || DEFAULT_STATE.currency,
+        accountingMode: savedConfig.accountingMode || parsed.accountingMode || DEFAULT_STATE.accountingMode,
         periodFrom: savedConfig.periodFrom || parsed.periodFrom || DEFAULT_STATE.periodFrom,
         periodTo: savedConfig.periodTo || parsed.periodTo || DEFAULT_STATE.periodTo,
         accountHeads:
@@ -421,6 +428,7 @@ function saveState() {
       JSON.stringify({
         lang: state.lang,
         currency: state.currency,
+        accountingMode: state.accountingMode,
         periodFrom: state.periodFrom,
         periodTo: state.periodTo,
         showDrCr: state.showDrCr,
@@ -485,6 +493,9 @@ function getHeadGroupBadgeHtml(group) {
   if (group === 'party_jv') {
     return `<span class="cat-chip-group party_jv">🤝 ${t('མི་སྣ་/སྔ་འདོན།', 'Party / Adv')}</span>`;
   }
+  if (group === 'fund' || group === 'capital_fund') {
+    return `<span class="cat-chip-group fund">🏛️ ${t('མ་དངུལ།', 'Fund')}</span>`;
+  }
   return `<span class="cat-chip-group cash_bank">🏦 ${t('དངུལ་ཁང་/ལག་དངུལ།', 'Cash / Bank')}</span>`;
 }
 
@@ -492,7 +503,7 @@ function getHeadGroupShortText(group) {
   if (group === 'income') return t('ཡོང་འབབ།', 'Income');
   if (group === 'expense') return t('འགྲོ་སོང་།', 'Expense');
   if (group === 'party_jv') return t('མི་སྣ་/སྔ་འདོན།', 'Party/Adv');
-  if (group === 'capital_fund') return t('ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།', 'Capital / General Fund');
+  if (group === 'fund' || group === 'capital_fund') return t('མ་དངུལ།', 'Fund');
   return t('དངུལ་ཁང་/ལག་དངུལ།', 'Cash/Bank');
 }
 
@@ -500,7 +511,7 @@ function getHeadGroupLabel(group) {
   if (group === 'income') return t('🟢 ཡོང་འབབ་རྩིས་འགོ།', '🟢 Income Heads');
   if (group === 'expense') return t('🔴 འགྲོ་སོང་རྩིས་འགོ།', '🔴 Expense Heads');
   if (group === 'party_jv') return t('🤝 མི་སྣ་དང་སྔ་འདོན།', '🤝 Party & Advance');
-  if (group === 'capital_fund') return t('🏛️ ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།', '🏛️ Capital / General Fund');
+  if (group === 'fund' || group === 'capital_fund') return t('🏛️ མ་དངུལ་རྩིས་འགོ། (མ་རྩ་དང་དམིགས་བསལ་མ་དངུལ།)', '🏛️ Capital & Designated Funds');
   return t('🏦 ལག་དངུལ་དང་དངུལ་ཁང་།', '🏦 Cash & Bank');
 }
 
@@ -668,6 +679,7 @@ function computeTrialBalanceAndBS() {
   const bsCashBankAssets = [];
   const bsPartyAndAdvanceAssets = [];
   const bsPartyAndLoanLiabilities = [];
+  const bsDesignatedFunds = [];
 
   let totalIncome = 0;
   let totalExpense = 0;
@@ -691,6 +703,9 @@ function computeTrialBalanceAndBS() {
       totalIncome += r.cr - r.dr - r.openNet;
     } else if (grp === 'expense') {
       totalExpense += r.dr - r.cr + r.openNet;
+    } else if (grp === 'fund' || grp === 'capital_fund') {
+      const fundBal = -closeNet; // Credit balance is positive fund reserve
+      bsDesignatedFunds.push({ head: r.head, amount: fundBal, closeNet });
     } else {
       if (closeNet > 0) {
         if (grp === 'cash_bank') {
@@ -704,19 +719,20 @@ function computeTrialBalanceAndBS() {
     }
   });
 
+  const totalDesignatedFunds = bsDesignatedFunds.reduce((s, f) => s + f.amount, 0);
   const openingCapitalFund = totalOpenDr - totalOpenCr;
   const netSurplus = totalIncome - totalExpense;
   const closingCapitalFund = openingCapitalFund + netSurplus;
 
-  // Include the auto-created Capital / General Fund (ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།) Cr row in Trial Balance
+  // Include the auto-created Capital / General Fund (ཐོག་མའི་མ་དངུལ།) Cr row in Trial Balance
   if (openingCapitalFund !== 0) {
     rows.unshift({
       head: {
         id: 'capital_general_fund',
         group: 'capital_fund',
         icon: '🏛️',
-        bo: 'ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།',
-        en: 'Capital / General Fund'
+        bo: 'ཐོག་མའི་མ་དངུལ། (སྤྱིར་བཏང་ལྷག་མ)',
+        en: 'General Capital Fund (Residual)'
       },
       openNet: -openingCapitalFund, // Credit (Cr) balance
       dr: 0,
@@ -737,7 +753,7 @@ function computeTrialBalanceAndBS() {
   const totalAssetsValue = totalCashBankAssets + totalPartyAssets;
 
   const totalPartyLiabilities = bsPartyAndLoanLiabilities.reduce((s, l) => s + l.amount, 0);
-  const totalLiabilitiesAndCapital = closingCapitalFund + totalPartyLiabilities;
+  const totalLiabilitiesAndCapital = closingCapitalFund + totalDesignatedFunds + totalPartyLiabilities;
 
   return {
     rows,
@@ -755,6 +771,8 @@ function computeTrialBalanceAndBS() {
     bsCashBankAssets,
     bsPartyAndAdvanceAssets,
     bsPartyAndLoanLiabilities,
+    bsDesignatedFunds,
+    totalDesignatedFunds,
     totalCashBankAssets,
     totalPartyAssets,
     totalPartyLiabilities,
@@ -977,11 +995,12 @@ function renderHeader() {
 }
 
 function renderBottomTabs() {
+  const isBasic = state.accountingMode === 'basic';
   const tabs = [
     { id: 'ledger', icon: '📒', bo: 'རྩིས་དེབ།', en: 'Cashbook' },
-    { id: 'heads', icon: '🗂️', bo: 'རྩིས་འགོ།', en: 'Account Heads' },
+    { id: 'heads', icon: '🗂️', bo: isBasic ? 'དབྱེ་ཁག' : 'རྩིས་འགོ།', en: isBasic ? 'Categories' : 'Account Heads' },
     { id: 'account_ledger', icon: '📖', bo: 'དབྱེ་དེབ།', en: 'Ledger' },
-    { id: 'reports', icon: '📊', bo: 'ལྷག་ཤོག', en: 'Trial & BS' }
+    { id: 'reports', icon: '📊', bo: isBasic ? 'རྩིས་སྡོམ།' : 'ལྷག་ཤོག', en: isBasic ? 'Summary' : 'Trial & BS' }
   ];
 
   const bar = document.getElementById('iosTabBar');
@@ -1256,14 +1275,22 @@ function renderLedgerTab() {
         </div>
       </div>
 
-      <!-- 4. Whole Picture Balance Sheet Tally Strip -->
+      <!-- 4. Balance Strip -->
+      ${state.accountingMode === 'advance' ? `
       <div style="margin-top:8px;padding:6px 10px;border-radius:9px;background:rgba(0,0,0,0.28);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#FEF08A;cursor:pointer;" onclick="switchTab('reports')">
         <span>⚖️ ${t('ལྷག་ཤོག་ཆ་ཚང་།', 'Whole Picture (BS)')}:</span>
         <strong>${formatMoney(metrics.totalAssetsValue)} = ${formatMoney(metrics.totalLiabilitiesAndCapital)} →</strong>
       </div>
+      ` : `
+      <div style="margin-top:8px;padding:6px 10px;border-radius:9px;background:rgba(0,0,0,0.28);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#FEF08A;">
+        <span>📊 ${t('ཡོང་འབབ་དང་འགྲོ་སོང་ཁྱད། (ཁེ་གྱོང་)', 'Net Savings (Income - Expense)')}:</span>
+        <strong style="color:${metrics.netIncome >= 0 ? '#86EFAC' : '#FDA4AF'};">${metrics.netIncome >= 0 ? '+' : ''}${formatMoney(metrics.netIncome)}</strong>
+      </div>
+      `}
     </div>
 
-    <!-- 4 Quick Action Buttons: Receipt, Payment, དངུལ་བཅུག་བཏོན། (Contra), མཚུངས་ཁྲ། (JV) -->
+    <!-- Quick Action Buttons -->
+    ${state.accountingMode === 'advance' ? `
     <div class="quick-entry-grid-4 no-print">
       <button class="action-btn cash-in" onclick="openEntryModal('in')">
         <span>➕</span>
@@ -1282,6 +1309,18 @@ function renderLedgerTab() {
         <span>${t('མཚུངས་ཁྲ།', 'Journal (JV)')}</span>
       </button>
     </div>
+    ` : `
+    <div class="quick-entry-row no-print" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+      <button class="action-btn cash-in" style="padding:14px 10px;font-size:15px;box-shadow:0 4px 14px rgba(22,101,52,0.25);" onclick="openEntryModal('in')">
+        <span style="font-size:18px;">➕</span>
+        <span>${t('བྱུང་བའི་དངུལ། (Cash In)', 'Cash In (+)')}</span>
+      </button>
+      <button class="action-btn cash-out" style="padding:14px 10px;font-size:15px;box-shadow:0 4px 14px rgba(153,27,27,0.25);" onclick="openEntryModal('out')">
+        <span style="font-size:18px;">➖</span>
+        <span>${t('སོང་བའི་དངུལ། (Cash Out)', 'Cash Out (-)')}</span>
+      </button>
+    </div>
+    `}
 
     <!-- Cash Book PDF Export Row -->
     <div class="quick-entry-row no-print" style="margin-bottom:10px;">
@@ -1302,12 +1341,14 @@ function renderLedgerTab() {
       <button class="seg-btn ${state.ledgerFilter === 'PAYMENT' ? 'active' : ''}" onclick="setLedgerFilter('PAYMENT')">
         ${t('སོང་།', 'Out')}
       </button>
+      ${state.accountingMode === 'advance' ? `
       <button class="seg-btn ${state.ledgerFilter === 'CONTRA' ? 'active' : ''}" onclick="setLedgerFilter('CONTRA')">
         ${state.lang === 'en' ? 'Contra' : 'དངུལ་བཅུག་བཏོན།'}
       </button>
       <button class="seg-btn ${state.ledgerFilter === 'JV' ? 'active' : ''}" onclick="setLedgerFilter('JV')">
         ${state.lang === 'en' ? 'JV' : 'མཚུངས་ཁྲ།'}
       </button>
+      ` : ''}
     </div>
 
     <!-- Section Header: ཉེ་ཆར་རྩིས་ཐོ། + Date Filter + བསྐྱར་སྒྲིག (Reset) -->
@@ -1342,9 +1383,15 @@ function renderLedgerTab() {
           value="${activeDateFilter}"
           onchange="setLedgerDateFilter(this.value)"
         />
-        <button class="mini-btn" onclick="toggleDrCrView()" style="background:${state.showDrCr ? '#FEF3C7' : '#FFF'};border-color:#D97706;color:#78350F;">
-          ${state.showDrCr ? '⚡ རྩིས་འགོ་གང་ནས་/གང་ལ་' : '👁️'}
-        </button>
+        ${
+          state.accountingMode === 'advance'
+            ? `
+          <button class="mini-btn" onclick="toggleDrCrView()" style="background:${state.showDrCr ? '#FEF3C7' : '#FFF'};border-color:#D97706;color:#78350F;">
+            ${state.showDrCr ? '⚡ རྩིས་འགོ་གང་ནས་/གང་ལ་' : '👁️ Dr/Cr'}
+          </button>
+        `
+            : ''
+        }
       </div>
     </div>
 
@@ -1521,34 +1568,63 @@ function executeDeleteTx(txId) {
 // TAB 2: ACCOUNT HEADS MANAGER & KHATA (རྩིས་འགོ་དང་བུ་ལོན།)
 // ----------------------------------------------------------------------------
 function renderHeadsAndKhataTab() {
+  const isBasic = state.accountingMode === 'basic';
   const tb = computeTrialBalanceAndBS();
   const closeMap = {};
   tb.rows.forEach(r => {
     closeMap[r.head.id] = r.closeNet;
   });
 
-  const groupLabels = [
-    {
-      key: 'cash_bank',
-      bo: '🏦 ལག་དངུལ་དང་དངུལ་ཁང་རྩིས་འགོ། (ལྷག་ཤོག)',
-      en: 'Cash & Bank Heads (Balance Sheet)'
-    },
-    {
-      key: 'party_jv',
-      bo: '🤝 མི་སྣ་དང་སྔ་འདོན་རྩིས་འགོ། (ལྷག་ཤོག: གཡོན།=རྒྱུ་དངོས། / གཡས།=བུ་ལོན།)',
-      en: 'Party & Advance Heads (Auto BS: Dr=Asset, Cr=Liability)'
-    },
-    {
-      key: 'expense',
-      bo: '🔴 འགྲོ་སོང་རྩིས་འགོ།',
-      en: 'Expense Account Heads'
-    },
-    {
-      key: 'income',
-      bo: '🟢 ཡོང་འབབ་རྩིས་འགོ།',
-      en: 'Income Account Heads'
-    }
-  ];
+  const groupLabels = isBasic
+    ? [
+        {
+          key: 'expense',
+          bo: '🔴 འགྲོ་སོང་གི་དབྱེ་བ།',
+          en: 'Expense Categories'
+        },
+        {
+          key: 'income',
+          bo: '🟢 ཡོང་འབབ་ཀྱི་དབྱེ་བ།',
+          en: 'Income Categories'
+        },
+        {
+          key: 'fund',
+          bo: '🏛️ མ་དངུལ་གྱི་དབྱེ་བ། (སྤྱིར་བཏང་མ་དངུལ་དང་དམིགས་བསལ་མ་དངུལ།)',
+          en: 'Funds (General & Designated Funds)'
+        },
+        {
+          key: 'cash_bank',
+          bo: '🏦 ལག་དངུལ་དང་དངུལ་ཁང་།',
+          en: 'Cash & Bank'
+        }
+      ]
+    : [
+        {
+          key: 'cash_bank',
+          bo: '🏦 ལག་དངུལ་དང་དངུལ་ཁང་རྩིས་འགོ། (ལྷག་ཤོག)',
+          en: 'Cash & Bank Heads (Balance Sheet)'
+        },
+        {
+          key: 'party_jv',
+          bo: '🤝 མི་སྣ་དང་སྔ་འདོན་རྩིས་འགོ། (ལྷག་ཤོག: གཡོན།=རྒྱུ་དངོས། / གཡས།=བུ་ལོན།)',
+          en: 'Party & Advance Heads (Auto BS: Dr=Asset, Cr=Liability)'
+        },
+        {
+          key: 'fund',
+          bo: '🏛️ མ་དངུལ་རྩིས་འགོ། (ལྷག་ཤོག • མ་རྩ་དང་དམིགས་བསལ་མ་དངུལ།)',
+          en: 'Capital & Designated Funds (Balance Sheet)'
+        },
+        {
+          key: 'expense',
+          bo: '🔴 འགྲོ་སོང་རྩིས་འགོ།',
+          en: 'Expense Account Heads'
+        },
+        {
+          key: 'income',
+          bo: '🟢 ཡོང་འབབ་རྩིས་འགོ།',
+          en: 'Income Account Heads'
+        }
+      ];
 
   const list = state.khataList;
 
@@ -1556,21 +1632,34 @@ function renderHeadsAndKhataTab() {
     <!-- Create New Account Head Banner -->
     <div class="summary-card" style="background: linear-gradient(145deg, #4C0519 0%, #1E293B 100%);padding:14px;">
       <div style="font-size:15px;font-weight:800;color:#FEF08A;margin-bottom:4px;">
-        🗂️ ${t('རྩིས་འགོའི་ཐོ་གཞུང་།', 'Chart of Account Heads')}
+        🗂️ ${isBasic ? t('འགྲོ་སོང་དང་ཡོང་འབབ་དབྱེ་བ།', 'Income & Expense Categories') : t('རྩིས་འགོའི་ཐོ་གཞུང་།', 'Chart of Account Heads')}
       </div>
       <div style="font-size:11.5px;color:#E2E8F0;margin-bottom:10px;">
-        ${t(
-          'མི་སྣ་དང་སྔ་འདོན་རྩིས་འགོའི་མཐའ་མའི་ལྷག་མ་ གཡོན། ཡིན་ན་རྒྱུ་དངོས་དང་ གཡས། ཡིན་ན་བུ་ལོན་ནང་རང་འགུལ་གྱིས་ལྷག་ཤོག་ནང་འགྲོ་གི་རེད།',
-          'Party & Advance heads automatically group into Assets (if Closing Dr) or Liabilities (if Closing Cr) on the Balance Sheet!'
-        )}
+        ${
+          isBasic
+            ? t(
+                'འགྲོ་སོང་དང་ཡོང་འབབ་ཀྱི་དབྱེ་བ་རྣམས་འདི་ནས་སྟབས་བདེར་བཟོ་ཐུབ།',
+                'Easily manage and create your Income & Expense categories.'
+              )
+            : t(
+                'མི་སྣ་དང་སྔ་འདོན་རྩིས་འགོའི་མཐའ་མའི་ལྷག་མ་ གཡོན། ཡིན་ན་རྒྱུ་དངོས་དང་ གཡས། ཡིན་ན་བུ་ལོན་ནང་རང་འགུལ་གྱིས་ལྷག་ཤོག་ནང་འགྲོ་གི་རེད།',
+                'Party & Advance heads automatically group into Assets (if Closing Dr) or Liabilities (if Closing Cr) on the Balance Sheet!'
+              )
+        }
       </div>
       <div style="display:flex;gap:8px;">
         <button class="action-btn" style="flex:1;background:#FDE047;color:#4C0519;" onclick="openCreateHeadModal()">
-          ➕ ${t('རྩིས་འགོ་གསར་པ།', 'New Head')}
+          ➕ ${isBasic ? t('དབྱེ་བ་གསར་པ།', 'New Category') : t('རྩིས་འགོ་གསར་པ།', 'New Head')}
         </button>
+        ${
+          !isBasic
+            ? `
         <button class="action-btn" style="flex:1;background:rgba(255,255,255,0.16);color:#FFF;border:1px solid rgba(255,255,255,0.3);" onclick="openOpeningBalanceModal()">
           ⚙️ ${t('ཐོག་མའི་ལྷག་མ།', 'Opening Bal')}
         </button>
+        `
+            : ''
+        }
       </div>
     </div>
 
@@ -1589,7 +1678,11 @@ function renderHeadsAndKhataTab() {
               .map(h => {
                 const cNet = closeMap[h.id] || 0;
                 let bsTag = '';
-                if ((h.group === 'party_jv' || h.group === 'cash_bank') && cNet !== 0) {
+                if (h.group === 'fund' && cNet !== 0) {
+                  bsTag = isBasic
+                    ? `<small style="color:#6D28D9;font-weight:800;">[${t('མ་དངུལ།', 'Fund')}: ${formatMoney(Math.abs(cNet))}]</small>`
+                    : `<small style="color:#6D28D9;font-weight:800;">[${t('མ་དངུལ།', 'Fund')}: ${formatMoney(Math.abs(cNet))} ${cNet <= 0 ? (state.lang === 'en' ? 'Cr' : 'གཡས།') : (state.lang === 'en' ? 'Dr Deficit' : 'གཡོན།')}]</small>`;
+                } else if (!isBasic && (h.group === 'party_jv' || h.group === 'cash_bank') && cNet !== 0) {
                   bsTag =
                     cNet > 0
                       ? `<small style="color:#15803D;font-weight:800;">[${t('རྒྱུ་དངོས།', 'Asset')}: ${formatMoney(cNet)} ${state.lang === 'en' ? 'Dr' : 'གཡོན།'}]</small>`
@@ -2200,8 +2293,35 @@ function shareReceiptWhatsApp(txId) {
 function renderReportsTab() {
   const metrics = computeBookMetrics();
   const tb = computeTrialBalanceAndBS();
+  const isAdvance = state.accountingMode === 'advance';
 
   return `
+    <!-- Accounting Skill Level Mode Switcher (Basic vs Advance) -->
+    <div class="report-card no-print" style="background:#FFFDF5;border:2px solid #F59E0B;padding:12px 14px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:14px;font-weight:800;color:#92400E;display:flex;align-items:center;gap:6px;">
+          <span>🎛️ ${t('རྩིས་རྒྱག་གི་རིམ་པ། (Accounting Level)', 'Accounting Level')}</span>
+        </div>
+        <span style="font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:99px;background:${!isAdvance ? '#DCFCE7' : '#EFF6FF'};color:${!isAdvance ? '#166534' : '#1E40AF'};">
+          ${!isAdvance ? t('🟢 ལས་སླ་པོ། (Basic)', '🟢 Basic Mode') : t('⚡ ཆེད་ལས། (Advance)', '⚡ Advance Mode')}
+        </span>
+      </div>
+      <div style="font-size:12px;color:#475569;margin-bottom:10px;line-height:1.5;">
+        ${t(
+          'ལས་སླ་པོ་ (Basic) ནང་བྱུང་སོང་ཁོ་ན་ཡོད་པས་ཚོང་པ་དང་མི་མང་ལ་སྟབས་བདེ། ཆེད་ལས་ (Advance) ནང་མཚུངས་ཁྲ་དང་དངུལ་སྤོ། ཚོད་བལྟའི་རྩིས་ཤོག ལྷག་ཤོག་ཆ་ཚང་ཡོད།',
+          'Basic mode is simplified for quick Cash In & Out tracking without Contra or JV. Advance mode enables full professional double-entry features.'
+        )}
+      </div>
+      <div class="segmented-bar" style="margin-bottom:0;">
+        <button type="button" class="seg-btn ${!isAdvance ? 'active' : ''}" onclick="setAccountingMode('basic')">
+          🟢 ${t('ལས་སླ་པོ། (Basic)', 'Basic Mode')}
+        </button>
+        <button type="button" class="seg-btn ${isAdvance ? 'active' : ''}" onclick="setAccountingMode('advance')">
+          ⚡ ${t('ཆེད་ལས། (Advance)', 'Advance Mode')}
+        </button>
+      </div>
+    </div>
+
     <!-- 0. Accounting Period Selector Card (རྩིས་དུས་འདེམས་སྒྲིག) + Apply Button -->
     <div class="report-card no-print" style="background:#EFF6FF;border:1.5px solid #93C5FD;padding:12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
@@ -2285,6 +2405,9 @@ function renderReportsTab() {
       </div>
     </div>
 
+    ${
+      isAdvance
+        ? `
     <!-- 2. ཚོད་བལྟའི་རྩིས་ཤོག (TRIAL BALANCE: Opening, Dr, Cr, Closing) -->
     <div class="report-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
@@ -2462,8 +2585,26 @@ function renderReportsTab() {
           <strong>${formatMoney(tb.closingCapitalFund)}</strong>
         </div>
 
+        <div style="font-size:11px;font-weight:800;color:#6D28D9;margin:8px 0 2px;">
+          🏛️ ${t('༢། དམིགས་བསལ་མ་དངུལ་ཁག', '2. Designated Capital Funds & Reserves')}
+        </div>
+        ${
+          tb.bsDesignatedFunds.length === 0
+            ? `<div style="font-size:11px;color:#6C6C70;padding:3px 0;">—</div>`
+            : tb.bsDesignatedFunds
+                .map(
+                  f => `
+              <div class="bs-row">
+                <span>${f.head.icon} ${t(f.head.bo, f.head.en)} <small style="color:#6D28D9;">(${t('མ་དངུལ།', 'Fund')})</small></span>
+                <strong style="color:#5B21B6;">${formatMoney(f.amount)}</strong>
+              </div>
+            `
+                )
+                .join('')
+        }
+
         <div style="font-size:11px;font-weight:800;color:#9F1239;margin:8px 0 2px;">
-          🏭 ${t('༢། མི་སྣ་སྤྲོད་དགོས་བུ་ལོན་དང་གཡར་དངུལ་ཁག', '2. Party Payables & Borrowings (Closing Cr)')}
+          🏭 ${t('༣། མི་སྣ་སྤྲོད་དགོས་བུ་ལོན་དང་གཡར་དངུལ་ཁག', '3. Party Payables & Borrowings (Closing Cr)')}
         </div>
         ${
           tb.bsPartyAndLoanLiabilities.length === 0
@@ -2490,6 +2631,25 @@ function renderReportsTab() {
         ✅ ${t('ལྷག་ཤོག་གི་རྒྱུ་དངོས་དང་མ་རྩ་བུ་ལོན་གཉིས་ཆ་སྙོམས་ཟིན་པ།', 'Balance Sheet Matched (Assets = Capital + Liabilities)')}
       </div>
     </div>
+    `
+        : `
+    <!-- Simple Mode Notice & Instant Pro Switch -->
+    <div class="report-card no-print" style="background:#FFFBEB;border:2px dashed #F59E0B;text-align:center;padding:16px;">
+      <div style="font-size:15px;font-weight:900;color:#92400E;margin-bottom:6px;">
+        ⚖️ ${t('ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག', 'Trial Balance & Balance Sheet')}
+      </div>
+      <div style="font-size:12px;color:#78350F;margin-bottom:12px;line-height:1.55;">
+        ${t(
+          'ཁྱེད་ཀྱི་རྩིས་ཐོ་ཡོངས་རྫོགས་རྒྱབ་ལྗོངས་སུ་ཆེད་ལས་རྩིས་སྲོལ་ (Double-Entry) ལྟར་གྲ་སྒྲིག་ཡོད། ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག་ཆ་ཚང་གཟིགས་འདོད་ན་ "ཆེད་ལས། (Advance)" རིམ་པར་བསྒྱུར་རོགས།',
+          'All your daily income & expense entries are already mathematically balanced under double-entry standards. Switch to Advance Mode to inspect full Trial Balance & Balance Sheet tables.'
+        )}
+      </div>
+      <button type="button" class="action-btn" style="background:linear-gradient(135deg,#92400E,#B45309);color:#FEF08A;padding:10px 18px;font-size:13px;font-weight:800;" onclick="setAccountingMode('advance')">
+        ⚡ ${t('ཆེད་ལས་རིམ་པར་བསྒྱུར། (Switch to Advance Mode)', 'Switch to Advance Mode')}
+      </button>
+    </div>
+    `
+    }
 
     <!-- 4. Phone-to-Phone Backup Transfer & Cloud Sync Card -->
     <div class="report-card no-print" style="background:#F0F9FF;border:1.5px solid #38BDF8;">
@@ -3663,6 +3823,10 @@ let modalPaymentHeadId = 'head_cash';
 let modalDateValue = getTodayStr();
 
 function openEntryModal(mode) {
+  // In Basic Mode, fall back to 'in' if contra or jv is triggered
+  if (state.accountingMode === 'basic' && (mode === 'contra' || mode === 'jv')) {
+    mode = 'in';
+  }
   modalEntryMode = mode;
   // Default to Today if within period, otherwise periodTo
   const today = getTodayStr();
@@ -3904,8 +4068,8 @@ function renderEntryModalContent() {
   // Notice: Every card in "Select Account Head" now displays its Head Group badge below!
   const gridHeads =
     mode === 'in'
-      ? state.accountHeads.filter(h => h.group === 'income' || h.group === 'party_jv')
-      : state.accountHeads.filter(h => h.group === 'expense' || h.group === 'party_jv');
+      ? state.accountHeads.filter(h => h.group === 'income' || h.group === 'party_jv' || h.group === 'fund')
+      : state.accountHeads.filter(h => h.group === 'expense' || h.group === 'party_jv' || h.group === 'fund');
 
   const cashBankHeads = state.accountHeads.filter(h => h.group === 'cash_bank');
   const otherHeads = state.accountHeads.filter(h => h.group !== 'cash_bank');
@@ -3920,8 +4084,14 @@ function renderEntryModalContent() {
     <div class="segmented-bar" style="margin-bottom:10px;">
       <button class="seg-btn ${mode === 'in' ? 'active' : ''}" onclick="switchModalMode('in')">➕ ${state.lang === 'en' ? 'In' : 'བྱུང་།'}</button>
       <button class="seg-btn ${mode === 'out' ? 'active' : ''}" onclick="switchModalMode('out')">➖ ${state.lang === 'en' ? 'Out' : 'སོང་།'}</button>
-      <button class="seg-btn" onclick="switchModalMode('contra')">🔄 ${state.lang === 'en' ? 'Contra' : 'དངུལ་བཅུག་བཏོན།'}</button>
-      <button class="seg-btn" onclick="switchModalMode('jv')">📒 ${state.lang === 'en' ? 'JV' : 'མཚུངས་ཁྲ།'}</button>
+      ${
+        state.accountingMode === 'advance'
+          ? `
+        <button class="seg-btn" onclick="switchModalMode('contra')">🔄 ${state.lang === 'en' ? 'Contra' : 'དངུལ་སྤོ།'}</button>
+        <button class="seg-btn" onclick="switchModalMode('jv')">📒 ${state.lang === 'en' ? 'JV' : 'མཚུངས་ཁྲ།'}</button>
+      `
+          : ''
+      }
     </div>
 
     <!-- Amount + Quick Amount Chips + Changeable Date Row -->
@@ -4011,6 +4181,9 @@ function renderEntryModalContent() {
           </button>
         </div>
 
+        ${
+          state.accountingMode === 'advance'
+            ? `
         <select id="entryPaymentHead" class="ios-input" onchange="selectModalPaymentHead(this.value)">
           <optgroup label="${t('🏦 ལག་དངུལ་དང་དངུལ་ཁང་།', '🏦 Cash & Bank')}">
             ${cashBankHeads
@@ -4035,9 +4208,27 @@ function renderEntryModalContent() {
               .join('')}
           </optgroup>
         </select>
+        `
+            : `
+        <select id="entryPaymentHead" class="ios-input" onchange="selectModalPaymentHead(this.value)">
+          ${cashBankHeads
+            .map(
+              h => `
+            <option value="${h.id}" ${h.id === modalPaymentHeadId ? 'selected' : ''}>
+              ${h.icon} ${t(h.bo, h.en)}
+            </option>
+          `
+            )
+            .join('')}
+        </select>
+        `
+        }
       </div>
 
-      <!-- Live Simple From -> To Preview Box -->
+      ${
+        state.accountingMode === 'advance'
+          ? `
+      <!-- Live Simple From -> To Preview Box (Advance Mode only) -->
       <div class="double-entry-preview">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
           <span style="font-weight:800;color:#1E3A8A;">⚡ ${t('རྩིས་འགོ་འགྲོ་སྟངས།', 'Account Flow')}</span>
@@ -4052,6 +4243,9 @@ function renderEntryModalContent() {
           return flowLabels.order === 'dr_first' ? `${drLine}${crLine}` : `${crLine}${drLine}`;
         })()}
       </div>
+      `
+          : ''
+      }
       `;
     })()}
 
@@ -4437,7 +4631,7 @@ async function cloudPullData() {
 function openOpeningBalanceModal() {
   const sheet = document.getElementById('modalSheet');
   const cashBankAndParty = state.accountHeads.filter(
-    h => h.group === 'cash_bank' || h.group === 'party_jv'
+    h => h.group === 'cash_bank' || h.group === 'party_jv' || h.group === 'fund'
   );
 
   sheet.innerHTML = `
@@ -4521,6 +4715,13 @@ function getHeadGroupExamples(group) {
       defaultIcon: '🛍️'
     };
   }
+  if (group === 'fund' || group === 'capital_fund') {
+    return {
+      boPlaceholder: 'དཔེར་ན། སྤྱིར་བཏང་མ་དངུལ། / གསང་སྤྱོད་རྒྱག་ཆེད་མ་དངུལ།',
+      enPlaceholder: 'e.g., General Fund / Toilet Construction Fund',
+      defaultIcon: '🏛️'
+    };
+  }
   return {
     boPlaceholder: 'དཔེར་ན། ཚོང་ཁང་ཁང་གླ། / སྤྱི་ཐབ་ཟས་སོང་།',
     enPlaceholder: 'e.g., Shop Stall Rent / Kitchen Food Expense',
@@ -4551,8 +4752,131 @@ function toggleOpeningSideVisibility(val) {
   }
 }
 
+function setBasicNewHeadGroup(group) {
+  const input = document.getElementById('newHeadGroup');
+  if (input) input.value = group;
+  const btnExp = document.getElementById('btnHeadExp');
+  const btnInc = document.getElementById('btnHeadInc');
+  const btnFund = document.getElementById('btnHeadFund');
+  const boInput = document.getElementById('newHeadBo');
+  const enInput = document.getElementById('newHeadEn');
+
+  [btnExp, btnInc, btnFund].forEach(b => {
+    if (b) {
+      b.style.background = '#F8FAFC';
+      b.style.color = '#475569';
+      b.style.borderColor = '#CBD5E1';
+    }
+  });
+
+  if (group === 'expense' && btnExp) {
+    btnExp.style.background = '#EF4444';
+    btnExp.style.color = '#FFF';
+    btnExp.style.borderColor = '#DC2626';
+    if (boInput) boInput.placeholder = 'དཔེར་ན། ཟས་སོང་། / ཚོང་ཁང་ཁང་གླ།';
+    if (enInput) enInput.placeholder = 'e.g. Food / Rent';
+  } else if (group === 'income' && btnInc) {
+    btnInc.style.background = '#10B981';
+    btnInc.style.color = '#FFF';
+    btnInc.style.borderColor = '#059669';
+    if (boInput) boInput.placeholder = 'དཔེར་ན། ཚོང་འབབ། / ཞལ་འདེབས།';
+    if (enInput) enInput.placeholder = 'e.g. Sales / Donation';
+  } else if ((group === 'fund' || group === 'capital_fund') && btnFund) {
+    btnFund.style.background = '#8B5CF6';
+    btnFund.style.color = '#FFF';
+    btnFund.style.borderColor = '#7C3AED';
+    if (boInput) boInput.placeholder = 'དཔེར་ན། སྤྱིར་བཏང་མ་དངུལ། / གསང་སྤྱོད་རྒྱག་ཆེད་མ་དངུལ།';
+    if (enInput) enInput.placeholder = 'e.g. General Fund / Toilet Fund';
+  }
+}
+
+function selectBasicHeadIcon(icon) {
+  const el = document.getElementById('newHeadIcon');
+  if (el) el.value = icon;
+  document.querySelectorAll('.basic-icon-chip').forEach(c => {
+    const isMatch = c.getAttribute('data-icon') === icon;
+    c.style.borderColor = isMatch ? '#2563EB' : '#CBD5E1';
+    c.style.background = isMatch ? '#EFF6FF' : '#FFF';
+    c.style.transform = isMatch ? 'scale(1.08)' : 'scale(1)';
+  });
+}
+
 function openCreateHeadModal(defaultGroup = 'expense') {
   const sheet = document.getElementById('modalSheet');
+  const isBasic = state.accountingMode === 'basic';
+  const initialGroup = (defaultGroup === 'income' || defaultGroup === 'fund') ? defaultGroup : 'expense';
+
+  if (isBasic) {
+    const popularIcons = ['🛍️', '🍲', '🚗', '🏠', '📱', '💼', '🎁', '💰', '🏛️', '🚻', '🙏', '📌'];
+    const currentIcon = defaultGroup === 'fund' ? '🏛️' : (defaultGroup === 'income' ? '💰' : '🛍️');
+
+    sheet.innerHTML = `
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title">➕ ${t('དབྱེ་བ་གསར་པ་བཟོས།', 'Add Category')}</div>
+        <button class="sheet-close" onclick="closeModal()">✕</button>
+      </div>
+
+      <!-- Segmented: Expense vs Income vs Fund (མ་དངུལ།) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:14px;">
+        <button type="button" id="btnHeadExp" class="action-btn"
+          style="padding:10px 4px;font-size:12px;background:${initialGroup === 'expense' ? '#EF4444' : '#F8FAFC'};color:${initialGroup === 'expense' ? '#FFF' : '#475569'};border:1.5px solid ${initialGroup === 'expense' ? '#DC2626' : '#CBD5E1'};"
+          onclick="setBasicNewHeadGroup('expense')">
+          🔴 ${t('འགྲོ་སོང་།', 'Expense')}
+        </button>
+        <button type="button" id="btnHeadInc" class="action-btn"
+          style="padding:10px 4px;font-size:12px;background:${initialGroup === 'income' ? '#10B981' : '#F8FAFC'};color:${initialGroup === 'income' ? '#FFF' : '#475569'};border:1.5px solid ${initialGroup === 'income' ? '#059669' : '#CBD5E1'};"
+          onclick="setBasicNewHeadGroup('income')">
+          🟢 ${t('ཡོང་འབབ།', 'Income')}
+        </button>
+        <button type="button" id="btnHeadFund" class="action-btn"
+          style="padding:10px 4px;font-size:12px;background:${initialGroup === 'fund' ? '#8B5CF6' : '#F8FAFC'};color:${initialGroup === 'fund' ? '#FFF' : '#475569'};border:1.5px solid ${initialGroup === 'fund' ? '#7C3AED' : '#CBD5E1'};"
+          onclick="setBasicNewHeadGroup('fund')">
+          🏛️ ${t('མ་དངུལ།', 'Fund')}
+        </button>
+      </div>
+      <input type="hidden" id="newHeadGroup" value="${initialGroup}" />
+
+      <!-- Name in Tibetan -->
+      <div class="ios-input-group">
+        <label class="ios-input-label">${t('དབྱེ་བའི་མིང་ (བོད་ཡིག)', 'Category Name in Tibetan')}</label>
+        <input type="text" id="newHeadBo" class="ios-input" placeholder="${initialGroup === 'fund' ? t('དཔེར་ན། སྤྱིར་བཏང་མ་དངུལ། / གསང་སྤྱོད་རྒྱག་ཆེད་མ་དངུལ།', 'e.g. སྤྱིར་བཏང་མ་དངུལ། / གསང་སྤྱོད་རྒྱག་ཆེད་མ་དངུལ།') : t('དཔེར་ན། ཟས་སོང་། / ཚོང་འབབ།', 'e.g. ཟས་སོང་། / ཚོང་འབབ།')}" />
+      </div>
+
+      <!-- Name in English -->
+      <div class="ios-input-group">
+        <label class="ios-input-label">${t('དབྱེ་བའི་མིང་ (English)', 'Category Name in English')}</label>
+        <input type="text" id="newHeadEn" class="ios-input" placeholder="${initialGroup === 'fund' ? 'e.g. General Fund / Toilet Fund' : 'e.g. Food / Sales'}" />
+      </div>
+
+      <!-- Fast Tap Icon Grid -->
+      <div class="ios-input-group">
+        <label class="ios-input-label">${t('མཚོན་རྟགས་འདེམས།', 'Pick an Icon')}</label>
+        <input type="hidden" id="newHeadIcon" value="${currentIcon}" />
+        <div style="display:grid;grid-template-columns:repeat(6, 1fr);gap:8px;margin-top:6px;">
+          ${popularIcons
+            .map(
+              ic => `
+            <button type="button" class="basic-icon-chip mini-btn" data-icon="${ic}"
+              onclick="selectBasicHeadIcon('${ic}')"
+              style="padding:8px 0;font-size:20px;text-align:center;background:${ic === currentIcon ? '#EFF6FF' : '#FFF'};border:1.5px solid ${ic === currentIcon ? '#2563EB' : '#CBD5E1'};border-radius:10px;cursor:pointer;">
+              ${ic}
+            </button>
+          `
+            )
+            .join('')}
+        </div>
+      </div>
+
+      <button class="action-btn cash-in" style="width:100%;padding:13px;font-size:15px;margin-top:10px;" onclick="saveNewAccountHead()">
+        ✅ ${t('ཉར་ཚགས་བྱོས།', 'Save Category')}
+      </button>
+    `;
+    document.getElementById('modalBackdrop').classList.add('open');
+    return;
+  }
+
+  // Advance Mode (full 5 groups, opening balance with Dr/Cr)
   const ex = getHeadGroupExamples(defaultGroup);
 
   sheet.innerHTML = `
@@ -4569,6 +4893,7 @@ function openCreateHeadModal(defaultGroup = 'expense') {
         <option value="income" ${defaultGroup === 'income' ? 'selected' : ''}>🟢 ${t('ཡོང་འབབ་རྩིས་འགོ།', 'Income Head')}</option>
         <option value="cash_bank" ${defaultGroup === 'cash_bank' ? 'selected' : ''}>🏦 ${t('ལག་དངུལ་དང་དངུལ་ཁང་།', 'Cash / Bank')}</option>
         <option value="party_jv" ${defaultGroup === 'party_jv' ? 'selected' : ''}>🤝 ${t('མི་སྣ་དང་སྔ་འདོན་རྩིས་འགོ།', 'Party / Advance')}</option>
+        <option value="fund" ${defaultGroup === 'fund' ? 'selected' : ''}>🏛️ ${t('མ་དངུལ་རྩིས་འགོ། (མ་རྩ་དང་དམིགས་བསལ་མ་དངུལ།)', 'Fund (Capital & Designated Funds)')}</option>
       </select>
     </div>
 
@@ -4598,7 +4923,7 @@ function openCreateHeadModal(defaultGroup = 'expense') {
         <label class="ios-input-label">${t('ལྷག་ཤོག་ཕྱོགས།', 'Opening Side')}</label>
         <select id="newHeadOpenSide" class="ios-input" style="font-size:13px;">
           <option value="dr">🟢 ${t('རྒྱུ་དངོས་/བསྡུ་དགོས།', 'Dr Asset / Receivable')}</option>
-          <option value="cr">🟣 ${t('སྤྲོད་དགོས་བུ་ལོན།', 'Cr Liability / Payable')}</option>
+          <option value="cr" ${defaultGroup === 'fund' ? 'selected' : ''}>🟣 ${t('མ་དངུལ་/སྤྲོད་དགོས་བུ་ལོན།', 'Cr Fund / Liability / Payable')}</option>
         </select>
       </div>
     </div>
@@ -4625,11 +4950,12 @@ function openCreateHeadModal(defaultGroup = 'expense') {
 }
 
 function saveNewAccountHead() {
-  const group = document.getElementById('newHeadGroup').value;
-  const bo = document.getElementById('newHeadBo').value.trim();
-  const en = document.getElementById('newHeadEn').value.trim();
-  const icon = document.getElementById('newHeadIcon').value;
-  const openingRaw = Math.abs(Number(document.getElementById('newHeadOpening').value) || 0);
+  const group = document.getElementById('newHeadGroup')?.value || 'expense';
+  const bo = document.getElementById('newHeadBo')?.value.trim() || '';
+  const en = document.getElementById('newHeadEn')?.value.trim() || '';
+  const icon = document.getElementById('newHeadIcon')?.value || '📌';
+  const openingEl = document.getElementById('newHeadOpening');
+  const openingRaw = openingEl ? Math.abs(Number(openingEl.value) || 0) : 0;
   const openSideEl = document.getElementById('newHeadOpenSide');
   const openSide = openSideEl ? openSideEl.value : 'dr';
   const openingVal = openSide === 'cr' ? -openingRaw : openingRaw;
@@ -4927,6 +5253,17 @@ function changeCurrency(curr) {
   state.currency = curr;
   saveState();
   renderAll();
+}
+
+function setAccountingMode(mode) {
+  state.accountingMode = mode;
+  saveState();
+  renderAll();
+  showToast(
+    mode === 'basic'
+      ? t('🟢 ལས་སླ་པོའི་རིམ་པར་བསྒྱུར་ཟིན། (Basic Mode)', 'Switched to Basic Mode')
+      : t('⚡ ཆེད་ལས་རིམ་པར་བསྒྱུར་ཟིན། (Advance Mode)', 'Switched to Advance Mode')
+  );
 }
 
 function changeBook(bookId) {

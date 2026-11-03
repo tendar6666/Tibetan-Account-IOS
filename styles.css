@@ -1104,6 +1104,12 @@ body.fullscreen-mode .ios-home-indicator {
   color: #0369A1;
 }
 
+.cat-chip-group.fund {
+  background: #EDE9FE;
+  color: #6D28D9;
+  border: 1px solid #C4B5FD;
+}
+
 .ios-input-group {
   background: #FFFFFF;
   border-radius: 12px;
