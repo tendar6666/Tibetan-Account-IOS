@@ -1,0 +1,17 @@
+{
+  "name": "བོད་ཀྱི་རྩིས་དེབ། • Tibetan Account Book",
+  "short_name": "Tibetan Account Book",
+  "description": "Tibetan & English Bilingual Accounting, Cashbook, Khata & Official Receipt App for iOS",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#881337",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23881337'/><text x='50' y='60' font-size='40' text-anchor='middle' fill='%23FDE047' font-family='sans-serif'>རྩིས།</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}

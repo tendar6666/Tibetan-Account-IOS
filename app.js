@@ -1,0 +1,5198 @@
+// ============================================================================
+// བོད་ཀྱི་རྩིས་དེབ། • Tibetan Account Book (iOS App)
+// Smart Hybrid Accounting Engine:
+// - Custom Account Heads with Group Badges shown below each head
+// - Accounting Period (རྩིས་དུས།) on Trial Balance + Entry Date Period Validation
+// - ཚོད་བལྟའི་རྩིས་ཤོག (Trial Balance with Opening & Closing Balance)
+// - ལྷག་ཤོག / མ་རྩ་ཁུངས་བསྐྱེལ་རྩིས་ཤོག (Intelligent Balance Sheet)
+// - Full Backup Export / Import to Another Phone + Cloud Sync Engine
+// ============================================================================
+
+const STORAGE_KEY = 'tibetan_account_book_v7';
+const CONFIG_STORAGE_KEY = 'tibetan_account_book_config_v1';
+
+function getTodayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Default Chart of Account Heads (རྩིས་འགོའི་ཐོ་གཞུང་།)
+// Note: No separate "UPI Wallet" head — UPI/GPay/NEFT are bank-to-bank transfers directly in Bank A/c!
+const DEFAULT_ACCOUNT_HEADS = [
+  // Cash & Bank Account Heads
+  { id: 'head_cash', group: 'cash_bank', icon: '💵', bo: 'ལག་དངུལ།', en: 'Cash in Hand' },
+  {
+    id: 'head_sbi',
+    group: 'cash_bank',
+    icon: '🏦',
+    bo: 'SBI དངུལ་ཁང་།',
+    en: 'SBI Bank A/c (incl. UPI/GPay)'
+  },
+  {
+    id: 'head_pnb',
+    group: 'cash_bank',
+    icon: '🏛️',
+    bo: 'PNB དངུལ་ཁང་།',
+    en: 'PNB Bank A/c'
+  },
+
+  // Income Account Heads
+  { id: 'sales', group: 'income', icon: '🛍️', bo: 'ཚོང་འབབ།', en: 'Sales / Shop Income' },
+  { id: 'donation', group: 'income', icon: '🙏', bo: 'ཞལ་འདེབས།', en: 'Offering / Donation' },
+  { id: 'salary_in', group: 'income', icon: '💼', bo: 'གླ་ཕོགས།', en: 'Salary / Stipend' },
+  { id: 'rent_in', group: 'income', icon: '🏠', bo: 'ཁང་གླ་བྱུང་བ།', en: 'Rent Received' },
+  { id: 'other_in', group: 'income', icon: '✨', bo: 'ཡོང་འབབ་གཞན།', en: 'Other Income' },
+
+  // Expense Account Heads
+  { id: 'food', group: 'expense', icon: '🍲', bo: 'ཟས་སོང་ / སྤྱི་ཐབ།', en: 'Food Expense' },
+  { id: 'rent_out', group: 'expense', icon: '🏢', bo: 'ཁང་གླ།', en: 'Rent' },
+  { id: 'inventory', group: 'expense', icon: '📦', bo: 'ཚོང་ཟོག་ཉོ་ཆ།', en: 'Stock & Goods' },
+  { id: 'ritual', group: 'expense', icon: '🪔', bo: 'མཆོད་རྫས་དང་སྐུ་རིམ།', en: 'Ritual & Offerings' },
+  { id: 'salary_out', group: 'expense', icon: '👥', bo: 'ལས་མིའི་གླ་ཕོགས།', en: 'Staff Wages' },
+  { id: 'travel', group: 'expense', icon: '🚌', bo: 'འགྲིམ་འགྲུལ་གླ་ཆ།', en: 'Travel & Freight' },
+  { id: 'utilities', group: 'expense', icon: '⚡', bo: 'གློག་དང་དྲ་རྒྱ།', en: 'Electricity & Net' },
+
+  // Party / Advance / Asset & Liability Account Heads (Dr = Asset Receivable, Cr = Liability Payable)
+  { id: 'party_advance', group: 'party_jv', icon: '🤝', bo: 'ལས་མིའི་སྔ་འདོན།', en: 'Staff Advance A/c' },
+  { id: 'party_pema', group: 'party_jv', icon: '👤', bo: 'པདྨ་ཆོས་སྒྲོན། (ཚོང་ཤག)', en: 'Pema Chodon (Customer A/c)' },
+  { id: 'party_ludhiana', group: 'party_jv', icon: '🏭', bo: 'ལུ་དྷི་ཡ་ན་བཟོ་གྲྭ།', en: 'Ludhiana Supplier A/c' }
+];
+
+const CURRENCIES = {
+  INR: { symbol: '₹', label: '₹ INR (རྒྱ་གར་སྒོར་)' },
+  USD: { symbol: '$', label: '$ USD (ཨ་སྒོར་)' },
+  NPR: { symbol: 'रू', label: 'रू NPR (བལ་སྒོར་)' },
+  EUR: { symbol: '€', label: '€ EUR (ཡུ་རོབ་སྒོར་)' },
+  CAD: { symbol: 'CA$', label: 'CA$ CAD (ཁེ་ན་ཌ་)' }
+};
+
+const DEFAULT_STATE = {
+  lang: 'bo_en', // 'bo_en' | 'bo' | 'en'
+  currency: 'INR',
+  activeTab: 'ledger', // 'ledger' | 'heads' | 'account_ledger' | 'reports'
+  ledgerFilter: 'all', // 'all' | 'RECEIPT' | 'PAYMENT' | 'CONTRA' | 'JV'
+  ledgerDateFilter: '', // '' = Reset (show all transactions in period), or 'YYYY-MM-DD'
+  ledgerSearchQuery: '', // Word search in Recent Transactions (ཉེ་ཆར་རྩིས་ཐོ།)
+  // Tab 3: དབྱེ་དེབ། (Ledger-Wise Display) state
+  selectedAccountLedgerHeadId: 'ALL', // 'ALL' (All active ledgers) or specific head.id
+  accountLedgerDateFilter: '', // '' = Reset (all dates in period), or 'YYYY-MM-DD'
+  accountLedgerSearchQuery: '', // Word search inside དབྱེ་དེབ། (Ledger)
+  showDrCr: true,
+  activeBookId: 'book_shop',
+  selectedReceiptTxId: 'tx_100',
+  // Selected Accounting Period (རྩིས་དུས།) for Cashbook, Trial Balance & Entry Date Validation
+  periodFrom: '2026-04-01',
+  periodTo: '2027-03-31',
+  // Optional Cloud Sync endpoint (Firebase Realtime DB / REST URL)
+  cloudSyncUrl: '',
+  cloudSyncKey: '',
+  accountHeads: DEFAULT_ACCOUNT_HEADS,
+  books: [
+    {
+      id: 'book_shop',
+      bo: 'ཧི་མ་ལ་ཡ་ཚོང་ཁང་།',
+      en: 'Himalaya Sweater & Craft Shop',
+      orgSealBo: 'ཧི་མ་ལ་ཡ་ཚོང་ཁང་ཐམ་ག',
+      orgSealEn: 'HIMALAYA SHOP SEAL',
+      openingBalances: {
+        head_cash: 15000,
+        head_sbi: 25000,
+        party_pema: 8500
+      }
+    },
+    {
+      id: 'book_monastery',
+      bo: 'དགོན་པའི་སྤྱི་ཐབ་རྩིས་དེབ།',
+      en: 'Monastery General & Donor Fund',
+      orgSealBo: 'ཕྱག་མཛོད་ལས་ཁུངས་ཐམ་ག',
+      orgSealEn: 'TREASURER OFFICE SEAL',
+      openingBalances: {
+        head_cash: 12000,
+        head_sbi: 50000,
+        party_advance: 5000
+      }
+    },
+    {
+      id: 'book_personal',
+      bo: 'སྒེར་གྱི་རྩིས་དེབ།',
+      en: 'Personal & Family Cashbook',
+      orgSealBo: 'སྒེར་གྱི་རྩིས་ཐམ།',
+      orgSealEn: 'PERSONAL VERIFIED',
+      openingBalances: {
+        head_cash: 5000,
+        head_sbi: 10000
+      }
+    }
+  ],
+  transactions: [
+    {
+      id: 'tx_100',
+      bookId: 'book_shop',
+      voucherType: 'JV',
+      primaryHeadId: 'food',
+      paymentHeadId: 'rent_out',
+      drHeadId: 'food',
+      crHeadId: 'rent_out',
+      amount: 1500,
+      partyBo: 'ཁང་གླ་ནས་ཟས་སོང་ལ་སྤོ་ཞུ།',
+      partyEn: 'Rent to Food Expense Adjustment (JV)',
+      noteBo: 'རྩིས་འགོ་གང་ནས། ཟས་སོང་། | རྩིས་འགོ་གང་ལ་བཏང་། ཁང་གླ། (མཚུངས་ཁྲ།)',
+      noteEn: 'Debit: Food Expense -> Credit: Rent (Journal Entry)',
+      date: '2026-10-26',
+      receiptNo: 'TAB-2026-082'
+    },
+    {
+      id: 'tx_101',
+      bookId: 'book_shop',
+      voucherType: 'RECEIPT',
+      primaryHeadId: 'sales',
+      paymentHeadId: 'head_sbi',
+      drHeadId: 'head_sbi',
+      crHeadId: 'sales',
+      amount: 18500,
+      partyBo: 'བསྟན་འཛིན་ནོར་བུ། (སྦེང་ལོར་)',
+      partyEn: 'Tenzin Norbu (Wholesale via Bank/UPI)',
+      noteBo: 'དགུན་དུས་བལ་གོས་ཚོང་འབབ་དངུལ་ཁང་ནང་བྱུང་བ།',
+      noteEn: 'Winter woolen jackets batch sale received in SBI Bank',
+      date: '2026-10-26',
+      receiptNo: 'TAB-2026-081'
+    },
+    {
+      id: 'tx_101b',
+      bookId: 'book_shop',
+      voucherType: 'JV',
+      primaryHeadId: 'inventory',
+      paymentHeadId: 'party_ludhiana',
+      drHeadId: 'inventory',
+      crHeadId: 'party_ludhiana',
+      amount: 10000,
+      partyBo: 'ལུ་དྷི་ཡ་ན་བཟོ་གྲྭ་ནས་བུ་ལོན་ཐོག་ཅ་ལག་ཉོས་པ།',
+      partyEn: 'Sweater Stock Bought on Credit from Ludhiana Supplier',
+      noteBo: 'རྩིས་འགོ་གང་ནས། ཚོང་ཟོག་ཉོ་ཆ། | རྩིས་འགོ་གང་ལ་བཏང་། ལུ་དྷི་ཡ་ན་བཟོ་གྲྭ།',
+      noteEn: 'Credit purchase via JV (Debit: Stock -> Credit: Ludhiana Supplier)',
+      date: '2026-10-25',
+      receiptNo: 'TAB-2026-080'
+    },
+    {
+      id: 'tx_103',
+      bookId: 'book_shop',
+      voucherType: 'PAYMENT',
+      primaryHeadId: 'party_ludhiana',
+      paymentHeadId: 'head_sbi',
+      drHeadId: 'party_ludhiana',
+      crHeadId: 'head_sbi',
+      amount: 3600,
+      partyBo: 'ལུ་དྷི་ཡ་ན་བཟོ་གྲྭར་དངུལ་ཁང་བརྒྱུད་བུ་ལོན་ཆ་ཤས་སྤྲད་པ།',
+      partyEn: 'Partial Supplier Payment to Ludhiana Factory via SBI Bank',
+      noteBo: 'བལ་གོས་བུ་ལོན་ ₹10,000 ནས་ ₹3,600 སྤྲད་པ། (ལྷག་མ་ ₹6,400 Cr)',
+      noteEn: 'Paid ₹3,600 against ₹10,000 bill (Balance ₹6,400 Cr Payable)',
+      date: '2026-10-25',
+      receiptNo: 'TAB-2026-079B'
+    },
+    {
+      id: 'tx_103b',
+      bookId: 'book_shop',
+      voucherType: 'PAYMENT',
+      primaryHeadId: 'party_advance',
+      paymentHeadId: 'head_cash',
+      drHeadId: 'party_advance',
+      crHeadId: 'head_cash',
+      amount: 2000,
+      partyBo: 'ཚོང་གཡོག་བཀྲ་ཤིས་ལ་ལག་དངུལ་སྔ་འདོན་སྤྲད་པ།',
+      partyEn: 'Cash Advance Given to Shop Assistant Tashi',
+      noteBo: 'ལས་མིའི་སྔ་འདོན། (བསྡུ་དགོས་རྒྱུ་དངོས་ Dr)',
+      noteEn: 'Staff Advance paid in Cash (Receivable Asset Dr)',
+      date: '2026-10-25',
+      receiptNo: 'TAB-2026-079A'
+    },
+    {
+      id: 'tx_102',
+      bookId: 'book_shop',
+      voucherType: 'RECEIPT',
+      primaryHeadId: 'sales',
+      paymentHeadId: 'head_cash',
+      drHeadId: 'head_cash',
+      crHeadId: 'sales',
+      amount: 9200,
+      partyBo: 'ཉིན་རེའི་ལག་དངུལ་ཚོང་འབབ།',
+      partyEn: 'Daily Counter Cash Sales',
+      noteBo: 'ཁ་བཏགས་དང་ལག་ཤེས་ཚོང་འབབ།',
+      noteEn: 'Khata scarves & handicraft retail',
+      date: '2026-10-25',
+      receiptNo: 'TAB-2026-079'
+    },
+    {
+      id: 'tx_104',
+      bookId: 'book_shop',
+      voucherType: 'CONTRA',
+      primaryHeadId: 'head_sbi',
+      paymentHeadId: 'head_cash',
+      drHeadId: 'head_sbi',
+      crHeadId: 'head_cash',
+      amount: 5000,
+      partyBo: 'ལག་དངུལ་དངུལ་ཁང་ནང་བཅུག་པ།',
+      partyEn: 'Cash Deposited into SBI Bank',
+      noteBo: 'བརྒྱུད་བཏང་། ལག་དངུལ་ → བརྒྱུད་འབྱོར། SBI དངུལ་ཁང་།',
+      noteEn: 'From Cash -> To SBI Bank (Contra)',
+      date: '2026-10-25',
+      receiptNo: 'TAB-2026-078'
+    },
+    {
+      id: 'tx_105',
+      bookId: 'book_shop',
+      voucherType: 'PAYMENT',
+      primaryHeadId: 'rent_out',
+      paymentHeadId: 'head_cash',
+      drHeadId: 'rent_out',
+      crHeadId: 'head_cash',
+      amount: 3500,
+      partyBo: 'ཚོང་ཁང་བདག་པོ།',
+      partyEn: 'Market Stall Landlord',
+      noteBo: 'ཟླ་བ་བཅུ་པའི་ཚོང་ཁང་ཁང་གླ།',
+      noteEn: 'October stall rent payment',
+      date: '2026-10-24',
+      receiptNo: 'TAB-2026-077'
+    },
+    // Monastery Book Transactions
+    {
+      id: 'tx_201',
+      bookId: 'book_monastery',
+      voucherType: 'RECEIPT',
+      primaryHeadId: 'donation',
+      paymentHeadId: 'head_sbi',
+      drHeadId: 'head_sbi',
+      crHeadId: 'donation',
+      amount: 25000,
+      partyBo: 'སྦྱིན་བདག་བློ་བཟང་རྒྱ་མཚོ།',
+      partyEn: 'Sponsor Lobsang Gyatso & Family',
+      noteBo: 'དགེ་འདུན་མང་ཇ་དང་གསོལ་ཚིགས་ཞལ་འདེབས།',
+      noteEn: 'Mangja tea & Sangha meal offering',
+      date: '2026-10-26',
+      receiptNo: 'MN-2026-104'
+    },
+    {
+      id: 'tx_202',
+      bookId: 'book_monastery',
+      voucherType: 'PAYMENT',
+      primaryHeadId: 'food',
+      paymentHeadId: 'head_cash',
+      drHeadId: 'food',
+      crHeadId: 'head_cash',
+      amount: 7800,
+      partyBo: 'སྤྱི་ཐབ་གཉེར་པ་ཚེ་རིང་།',
+      partyEn: 'Kitchen Steward Tsering',
+      noteBo: 'འབྲས་དང་སྣུམ་སྔོ་ཚལ་ཉོ་ཆ།',
+      noteEn: 'Rice, cooking oil & vegetables for kitchen',
+      date: '2026-10-25',
+      receiptNo: 'MN-2026-103'
+    },
+    {
+      id: 'tx_203',
+      bookId: 'book_monastery',
+      voucherType: 'JV',
+      primaryHeadId: 'ritual',
+      paymentHeadId: 'party_advance',
+      drHeadId: 'ritual',
+      crHeadId: 'party_advance',
+      amount: 2200,
+      partyBo: 'མཆོད་དཔོན་ལས་ཁུངས།',
+      partyEn: 'Shrine Master Advance Settlement',
+      noteBo: 'རྩིས་འགོ་གང་ནས། མཆོད་རྫས། | རྩིས་འགོ་གང་ལ་བཏང་། སྔ་འདོན། (མཚུངས་ཁྲ།)',
+      noteEn: 'Debit: Ritual Expense -> Credit: Staff Advance (JV)',
+      date: '2026-10-24',
+      receiptNo: 'MN-2026-102'
+    }
+  ],
+  khataList: [
+    {
+      id: 'kh_1',
+      bookId: 'book_shop',
+      nameBo: 'པདྨ་ཆོས་སྒྲོན། (རྡ་ས།)',
+      nameEn: 'Pema Chodon (Dharamshala)',
+      phone: '+91 98160-12345',
+      type: 'receive',
+      amount: 8500,
+      noteBo: 'དགུན་གོས་ཆ་ ༡༥ ཡི་ལྷག་མ།',
+      noteEn: 'Balance for 15 winter jackets',
+      dueDate: '2026-11-05'
+    },
+    {
+      id: 'kh_2',
+      bookId: 'book_shop',
+      nameBo: 'ལུ་དྷི་ཡ་ན་བཟོ་གྲྭ།',
+      nameEn: 'Ludhiana Knitwear Supplier',
+      phone: '+91 99104-55432',
+      type: 'pay',
+      amount: 6400,
+      noteBo: 'བལ་གོས་གསར་པ་ཉོ་ཆའི་བུ་ལོན།',
+      noteEn: 'Sweater stock credit balance',
+      dueDate: '2026-11-10'
+    }
+  ]
+};
+
+let state = loadState();
+
+function sanitizeRemovedUpiHead(s) {
+  if (!s) return s;
+  if (s.activeTab === 'receipt') {
+    s.activeTab = 'account_ledger';
+  }
+  if (!s.selectedAccountLedgerHeadId || s.selectedAccountLedgerHeadId === 'head_upi') {
+    s.selectedAccountLedgerHeadId = 'ALL';
+  }
+  // Remove any legacy 'head_upi' or 'head_cheque' from accountHeads
+  if (Array.isArray(s.accountHeads)) {
+    s.accountHeads = s.accountHeads.filter(h => h.id !== 'head_upi' && h.id !== 'head_cheque');
+    const sbi = s.accountHeads.find(h => h.id === 'head_sbi');
+    if (sbi) {
+      sbi.bo = 'SBI དངུལ་ཁང་།';
+      sbi.en = 'SBI Bank A/c (incl. UPI/GPay)';
+    }
+  }
+  // Remap any legacy transactions that used head_upi or head_cheque to head_sbi (Bank)
+  if (Array.isArray(s.transactions)) {
+    s.transactions.forEach(tx => {
+      if (tx.primaryHeadId === 'head_upi' || tx.primaryHeadId === 'head_cheque') tx.primaryHeadId = 'head_sbi';
+      if (tx.paymentHeadId === 'head_upi' || tx.paymentHeadId === 'head_cheque') tx.paymentHeadId = 'head_sbi';
+      if (tx.drHeadId === 'head_upi' || tx.drHeadId === 'head_cheque') tx.drHeadId = 'head_sbi';
+      if (tx.crHeadId === 'head_upi' || tx.crHeadId === 'head_cheque') tx.crHeadId = 'head_sbi';
+    });
+  }
+  return s;
+}
+
+function loadState() {
+  let savedConfig = {};
+  try {
+    const rawCfg = localStorage.getItem(CONFIG_STORAGE_KEY);
+    if (rawCfg) savedConfig = JSON.parse(rawCfg) || {};
+  } catch (e) {}
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return sanitizeRemovedUpiHead({
+        ...DEFAULT_STATE,
+        ...parsed,
+        lang: savedConfig.lang || parsed.lang || DEFAULT_STATE.lang,
+        currency: savedConfig.currency || parsed.currency || DEFAULT_STATE.currency,
+        periodFrom: savedConfig.periodFrom || parsed.periodFrom || DEFAULT_STATE.periodFrom,
+        periodTo: savedConfig.periodTo || parsed.periodTo || DEFAULT_STATE.periodTo,
+        accountHeads:
+          parsed.accountHeads && parsed.accountHeads.length ? parsed.accountHeads : DEFAULT_ACCOUNT_HEADS
+      });
+    }
+
+    // Migrate user's Language & Period configuration from v6 if present
+    const rawV6 = localStorage.getItem('tibetan_account_book_v6');
+    if (rawV6) {
+      const parsedV6 = JSON.parse(rawV6);
+      const base = JSON.parse(JSON.stringify(DEFAULT_STATE));
+      base.lang = savedConfig.lang || parsedV6.lang || base.lang;
+      base.currency = savedConfig.currency || parsedV6.currency || base.currency;
+      base.periodFrom = savedConfig.periodFrom || parsedV6.periodFrom || base.periodFrom;
+      base.periodTo = savedConfig.periodTo || parsedV6.periodTo || base.periodTo;
+      base.cloudSyncUrl = parsedV6.cloudSyncUrl || '';
+      base.cloudSyncKey = parsedV6.cloudSyncKey || '';
+      return sanitizeRemovedUpiHead(base);
+    }
+  } catch (e) {
+    console.warn('Local storage fallback:', e);
+  }
+
+  const fresh = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  if (savedConfig.lang) fresh.lang = savedConfig.lang;
+  if (savedConfig.currency) fresh.currency = savedConfig.currency;
+  if (savedConfig.periodFrom) fresh.periodFrom = savedConfig.periodFrom;
+  if (savedConfig.periodTo) fresh.periodTo = savedConfig.periodTo;
+  return sanitizeRemovedUpiHead(fresh);
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // Also persist Language, Currency, and Accounting Period in dedicated config storage
+    localStorage.setItem(
+      CONFIG_STORAGE_KEY,
+      JSON.stringify({
+        lang: state.lang,
+        currency: state.currency,
+        periodFrom: state.periodFrom,
+        periodTo: state.periodTo,
+        showDrCr: state.showDrCr,
+        cloudSyncUrl: state.cloudSyncUrl || '',
+        cloudSyncKey: state.cloudSyncKey || ''
+      })
+    );
+  } catch (e) {
+    console.warn('Could not save state:', e);
+  }
+}
+
+// Bilingual Text Helper
+function t(bo, en) {
+  if (state.lang === 'bo') return bo;
+  if (state.lang === 'en') return en;
+  return `${bo} • ${en}`;
+}
+
+function formatMoney(num) {
+  const sym = (CURRENCIES[state.currency] || CURRENCIES.INR).symbol;
+  const formatted = Math.abs(Number(num || 0)).toLocaleString('en-IN');
+  return `${num < 0 ? '-' : ''}${sym}${formatted}`;
+}
+
+function getHead(headId) {
+  return (
+    state.accountHeads.find(h => h.id === headId) || {
+      id: headId,
+      group: 'expense',
+      icon: '📌',
+      bo: 'རྩིས་འགོ་གཞན།',
+      en: 'General Head'
+    }
+  );
+}
+
+// Returns the Account Head Group badge HTML to display below each Account Head in "Select Account Head"
+function getHeadGroupBadgeHtml(group) {
+  if (group === 'income') {
+    return `<span class="cat-chip-group income">🟢 ${t('ཡོང་འབབ།', 'Income')}</span>`;
+  }
+  if (group === 'expense') {
+    return `<span class="cat-chip-group expense">🔴 ${t('འགྲོ་སོང་།', 'Expense')}</span>`;
+  }
+  if (group === 'party_jv') {
+    return `<span class="cat-chip-group party_jv">🤝 ${t('མི་སྣ་/སྔ་འདོན།', 'Party / Adv')}</span>`;
+  }
+  return `<span class="cat-chip-group cash_bank">🏦 ${t('དངུལ་ཁང་/ལག་དངུལ།', 'Cash / Bank')}</span>`;
+}
+
+function getHeadGroupShortText(group) {
+  if (group === 'income') return t('ཡོང་འབབ།', 'Income');
+  if (group === 'expense') return t('འགྲོ་སོང་།', 'Expense');
+  if (group === 'party_jv') return t('མི་སྣ་/སྔ་འདོན།', 'Party/Adv');
+  if (group === 'capital_fund') return t('ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།', 'Capital / General Fund');
+  return t('དངུལ་ཁང་/ལག་དངུལ།', 'Cash/Bank');
+}
+
+function getHeadGroupLabel(group) {
+  if (group === 'income') return t('🟢 ཡོང་འབབ་རྩིས་འགོ།', '🟢 Income Heads');
+  if (group === 'expense') return t('🔴 འགྲོ་སོང་རྩིས་འགོ།', '🔴 Expense Heads');
+  if (group === 'party_jv') return t('🤝 མི་སྣ་དང་སྔ་འདོན།', '🤝 Party & Advance');
+  if (group === 'capital_fund') return t('🏛️ ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།', '🏛️ Capital / General Fund');
+  return t('🏦 ལག་དངུལ་དང་དངུལ་ཁང་།', '🏦 Cash & Bank');
+}
+
+function getActiveBook() {
+  const b = state.books.find(b => b.id === state.activeBookId) || state.books[0];
+  if (!b.openingBalances) b.openingBalances = {};
+  return b;
+}
+
+function getHeadOpeningBalance(headId) {
+  const book = getActiveBook();
+  return Number((book.openingBalances && book.openingBalances[headId]) || 0);
+}
+
+function getBookTransactions() {
+  return state.transactions.filter(tx => tx.bookId === state.activeBookId);
+}
+
+function isDateWithinPeriod(dateStr) {
+  if (!dateStr) return false;
+  return dateStr >= state.periodFrom && dateStr <= state.periodTo;
+}
+
+function getVoucherDisplayBadge(vType) {
+  if (vType === 'JV') return t('མཚུངས་ཁྲ།', 'JV');
+  if (vType === 'CONTRA') return t('དངུལ་བཅུག་བཏོན།', 'CONTRA');
+  if (vType === 'RECEIPT') return t('བྱུང་འཛིན།', 'RECEIPT');
+  return t('འགྲོ་སོང་།', 'PAYMENT');
+}
+
+// ============================================================================
+// Period-Aware Double-Entry Accounting Calculations:
+// - Transactions before state.periodFrom roll into Opening Balance
+// - Transactions inside [state.periodFrom, state.periodTo] count in Period Dr/Cr
+// ============================================================================
+
+function computeBookMetrics() {
+  const txs = getBookTransactions();
+
+  let openingCash = getHeadOpeningBalance('head_cash');
+  let openingBank = 0;
+  state.accountHeads
+    .filter(h => h.group === 'cash_bank' && h.id !== 'head_cash')
+    .forEach(h => {
+      openingBank += getHeadOpeningBalance(h.id);
+    });
+
+  // Roll any transactions before periodFrom into Opening Cash/Bank
+  txs
+    .filter(tx => tx.date < state.periodFrom)
+    .forEach(tx => {
+      const amt = Number(tx.amount) || 0;
+      const drHead = getHead(tx.drHeadId);
+      const crHead = getHead(tx.crHeadId);
+      if (drHead.group === 'cash_bank') {
+        if (drHead.id === 'head_cash') openingCash += amt;
+        else openingBank += amt;
+      }
+      if (crHead.group === 'cash_bank') {
+        if (crHead.id === 'head_cash') openingCash -= amt;
+        else openingBank -= amt;
+      }
+    });
+
+  let cashBalance = openingCash;
+  let bankBalance = openingBank;
+  let totalIncome = 0;
+  let totalExpense = 0;
+
+  // Apply transactions within the selected period [periodFrom, periodTo]
+  txs
+    .filter(tx => isDateWithinPeriod(tx.date))
+    .forEach(tx => {
+      const amt = Number(tx.amount) || 0;
+      const drHead = getHead(tx.drHeadId);
+      const crHead = getHead(tx.crHeadId);
+
+      if (drHead.group === 'cash_bank') {
+        if (drHead.id === 'head_cash') cashBalance += amt;
+        else bankBalance += amt;
+      }
+      if (crHead.group === 'cash_bank') {
+        if (crHead.id === 'head_cash') cashBalance -= amt;
+        else bankBalance -= amt;
+      }
+
+      if (crHead.group === 'income') totalIncome += amt;
+      if (drHead.group === 'income') totalIncome -= amt;
+
+      if (drHead.group === 'expense') totalExpense += amt;
+      if (crHead.group === 'expense') totalExpense -= amt;
+    });
+
+  const tb = computeTrialBalanceAndBS();
+
+  return {
+    openingCash,
+    openingBank,
+    openingTotalLiquid: openingCash + openingBank,
+    cashBalance,
+    bankBalance,
+    totalLiquid: cashBalance + bankBalance,
+    totalIncome,
+    totalExpense,
+    netSurplus: totalIncome - totalExpense,
+    totalPartyReceivable: tb.totalPartyAssets,
+    totalPartyPayable: tb.totalPartyLiabilities,
+    openingCapitalFund: tb.openingCapitalFund,
+    closingCapitalFund: tb.closingCapitalFund,
+    totalAssetsValue: tb.totalAssetsValue,
+    totalLiabilitiesAndCapital: tb.totalLiabilitiesAndCapital
+  };
+}
+
+function computeTrialBalanceAndBS() {
+  const txs = getBookTransactions();
+  const map = {};
+
+  state.accountHeads.forEach(h => {
+    const openVal = getHeadOpeningBalance(h.id);
+    map[h.id] = {
+      head: h,
+      openNet: openVal, // >0 = Opening Dr, <0 = Opening Cr
+      dr: 0,
+      cr: 0
+    };
+  });
+
+  // 1. Transactions prior to state.periodFrom adjust the Opening Balance as of periodFrom
+  txs
+    .filter(tx => tx.date < state.periodFrom)
+    .forEach(tx => {
+      const amt = Number(tx.amount) || 0;
+      if (!map[tx.drHeadId]) {
+        map[tx.drHeadId] = { head: getHead(tx.drHeadId), openNet: 0, dr: 0, cr: 0 };
+      }
+      if (!map[tx.crHeadId]) {
+        map[tx.crHeadId] = { head: getHead(tx.crHeadId), openNet: 0, dr: 0, cr: 0 };
+      }
+      map[tx.drHeadId].openNet += amt;
+      map[tx.crHeadId].openNet -= amt;
+    });
+
+  // 2. Transactions within [state.periodFrom, state.periodTo] populate Period Dr & Cr
+  txs
+    .filter(tx => isDateWithinPeriod(tx.date))
+    .forEach(tx => {
+      const amt = Number(tx.amount) || 0;
+      if (!map[tx.drHeadId]) {
+        map[tx.drHeadId] = { head: getHead(tx.drHeadId), openNet: 0, dr: 0, cr: 0 };
+      }
+      if (!map[tx.crHeadId]) {
+        map[tx.crHeadId] = { head: getHead(tx.crHeadId), openNet: 0, dr: 0, cr: 0 };
+      }
+      map[tx.drHeadId].dr += amt;
+      map[tx.crHeadId].cr += amt;
+    });
+
+  const rows = [];
+  let totalOpenDr = 0;
+  let totalOpenCr = 0;
+  let totalPeriodDr = 0;
+  let totalPeriodCr = 0;
+
+  const bsCashBankAssets = [];
+  const bsPartyAndAdvanceAssets = [];
+  const bsPartyAndLoanLiabilities = [];
+
+  let totalIncome = 0;
+  let totalExpense = 0;
+
+  Object.values(map).forEach(r => {
+    const closeNet = r.openNet + r.dr - r.cr;
+    if (r.openNet !== 0 || r.dr > 0 || r.cr > 0 || closeNet !== 0) {
+      rows.push({
+        ...r,
+        closeNet
+      });
+    }
+
+    if (r.openNet > 0) totalOpenDr += r.openNet;
+    if (r.openNet < 0) totalOpenCr += Math.abs(r.openNet);
+    totalPeriodDr += r.dr;
+    totalPeriodCr += r.cr;
+
+    const grp = r.head.group;
+    if (grp === 'income') {
+      totalIncome += r.cr - r.dr - r.openNet;
+    } else if (grp === 'expense') {
+      totalExpense += r.dr - r.cr + r.openNet;
+    } else {
+      if (closeNet > 0) {
+        if (grp === 'cash_bank') {
+          bsCashBankAssets.push({ head: r.head, amount: closeNet });
+        } else {
+          bsPartyAndAdvanceAssets.push({ head: r.head, amount: closeNet });
+        }
+      } else if (closeNet < 0) {
+        bsPartyAndLoanLiabilities.push({ head: r.head, amount: Math.abs(closeNet) });
+      }
+    }
+  });
+
+  const openingCapitalFund = totalOpenDr - totalOpenCr;
+  const netSurplus = totalIncome - totalExpense;
+  const closingCapitalFund = openingCapitalFund + netSurplus;
+
+  // Include the auto-created Capital / General Fund (ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།) Cr row in Trial Balance
+  if (openingCapitalFund !== 0) {
+    rows.unshift({
+      head: {
+        id: 'capital_general_fund',
+        group: 'capital_fund',
+        icon: '🏛️',
+        bo: 'ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།',
+        en: 'Capital / General Fund'
+      },
+      openNet: -openingCapitalFund, // Credit (Cr) balance
+      dr: 0,
+      cr: 0,
+      closeNet: -openingCapitalFund
+    });
+  }
+
+  let totalClosingDr = 0;
+  let totalClosingCr = 0;
+  rows.forEach(r => {
+    if (r.closeNet > 0) totalClosingDr += r.closeNet;
+    if (r.closeNet < 0) totalClosingCr += Math.abs(r.closeNet);
+  });
+
+  const totalCashBankAssets = bsCashBankAssets.reduce((s, a) => s + a.amount, 0);
+  const totalPartyAssets = bsPartyAndAdvanceAssets.reduce((s, a) => s + a.amount, 0);
+  const totalAssetsValue = totalCashBankAssets + totalPartyAssets;
+
+  const totalPartyLiabilities = bsPartyAndLoanLiabilities.reduce((s, l) => s + l.amount, 0);
+  const totalLiabilitiesAndCapital = closingCapitalFund + totalPartyLiabilities;
+
+  return {
+    rows,
+    totalOpenDr,
+    totalOpenCr,
+    openingCapitalFund,
+    totalPeriodDr,
+    totalPeriodCr,
+    totalClosingDr,
+    totalClosingCr,
+    totalIncome,
+    totalExpense,
+    netSurplus,
+    closingCapitalFund,
+    bsCashBankAssets,
+    bsPartyAndAdvanceAssets,
+    bsPartyAndLoanLiabilities,
+    totalCashBankAssets,
+    totalPartyAssets,
+    totalPartyLiabilities,
+    totalAssetsValue,
+    totalLiabilitiesAndCapital
+  };
+}
+
+// ============================================================================
+// Automatic Voucher & From/To (རྩིས་འགོ་གང་ནས། -> རྩིས་འགོ་ལ་བཏང་།) Resolver
+// ============================================================================
+function resolveDoubleEntry(mode, primaryHeadId, paymentHeadId) {
+  const primary = getHead(primaryHeadId);
+  const payment = getHead(paymentHeadId);
+
+  if (mode === 'jv') {
+    const bothCashBank = primary.group === 'cash_bank' && payment.group === 'cash_bank';
+    return {
+      voucherType: bothCashBank ? 'CONTRA' : 'JV',
+      voucherLabelBo: bothCashBank ? 'དངུལ་བཅུག་བཏོན།' : 'མཚུངས་ཁྲ།',
+      voucherLabelEn: bothCashBank ? 'Contra Transfer' : 'Journal Voucher (JV)',
+      crHeadId: payment.id,
+      drHeadId: primary.id
+    };
+  }
+
+  if (mode === 'contra') {
+    return {
+      voucherType: 'CONTRA',
+      voucherLabelBo: 'དངུལ་བཅུག་བཏོན།',
+      voucherLabelEn: 'Contra Transfer (Cash ↔ Bank)',
+      crHeadId: payment.id,
+      drHeadId: primary.id
+    };
+  }
+
+  if (primary.group === 'cash_bank' && payment.group === 'cash_bank') {
+    return {
+      voucherType: 'CONTRA',
+      voucherLabelBo: 'དངུལ་བཅུག་བཏོན།',
+      voucherLabelEn: 'Contra Transfer (Cash ↔ Bank)',
+      crHeadId: payment.id,
+      drHeadId: primary.id
+    };
+  }
+
+  if (primary.group !== 'cash_bank' && payment.group !== 'cash_bank') {
+    const isReceiptFlow = mode === 'in' || primary.group === 'income';
+    return {
+      voucherType: 'JV',
+      voucherLabelBo: 'མཚུངས་ཁྲ།',
+      voucherLabelEn: 'Journal Voucher (JV)',
+      crHeadId: isReceiptFlow ? primary.id : payment.id,
+      drHeadId: isReceiptFlow ? payment.id : primary.id
+    };
+  }
+
+  if (mode === 'in' || primary.group === 'income') {
+    return {
+      voucherType: 'RECEIPT',
+      voucherLabelBo: 'བྱུང་འཛིན།',
+      voucherLabelEn: 'Receipt Voucher (Money In)',
+      crHeadId: primary.id,
+      drHeadId: payment.id
+    };
+  }
+
+  return {
+    voucherType: 'PAYMENT',
+    voucherLabelBo: 'འགྲོ་སོང་།',
+    voucherLabelEn: 'Payment Voucher (Money Out)',
+    crHeadId: payment.id,
+    drHeadId: primary.id
+  };
+}
+
+// Dynamic Tibetan & English Accounting Head Labels Resolver
+// Rules:
+// 1. If an account head is Cash or Bank (cash_bank):
+//    - Debit side: བརྒྱུད་འབྱོར། (Received Via Cash/Bank)
+//    - Credit side: བརྒྱུད་བཏང་། (Paid Through Cash/Bank)
+// 2. PAYMENT:
+//    - If Expense: Debit = རྩིས་འགོ་གང་ནས།, Credit = བརྒྱུད་བཏང་།
+//    - If Party/Advance: Debit = རྩིས་འགོ་ལ་བཏང་།, Credit = བརྒྱུད་བཏང་།
+// 3. RECEIPT:
+//    - If Income: Credit = རྩིས་འགོ་ནང་བྱུང་།, Debit = བརྒྱུད་འབྱོར།
+//    - If Party/Advance: Credit = རྩིས་འགོ་ལ་བྱུང་།, Debit = བརྒྱུད་འབྱོར།
+// 4. CONTRA (Cash ↔ Bank):
+//    - Credit = བརྒྱུད་བཏང་། (Paid/Outflow), Debit = བརྒྱུད་འབྱོར། (Received/Inflow)
+// 5. JOURNAL VOUCHER (JV):
+//    - Debit = རྩིས་འགོ་གང་ནས།, Credit = རྩིས་འགོ་གང་ལ་བཏང་།
+function getVoucherDynamicHeadLabels(tx) {
+  const vType = (tx && tx.voucherType) || 'PAYMENT';
+  const drHead = getHead(tx ? tx.drHeadId : null);
+  const crHead = getHead(tx ? tx.crHeadId : null);
+
+  const isDrCashBank = !!(drHead && drHead.group === 'cash_bank');
+  const isCrCashBank = !!(crHead && crHead.group === 'cash_bank');
+
+  if (vType === 'PAYMENT') {
+    const isExpense = drHead && drHead.group === 'expense';
+    const crLabelBo = isCrCashBank ? 'བརྒྱུད་བཏང་།' : 'རྩིས་འགོ་གང་ནས།';
+    const crLabelEn = isCrCashBank ? 'Paid Through (Cr)' : 'From Head (Cr)';
+
+    if (isExpense) {
+      return {
+        order: 'dr_first',
+        drLabelBo: 'རྩིས་འགོ་གང་ནས།',
+        drLabelEn: 'Expense Head (Dr)',
+        crLabelBo,
+        crLabelEn
+      };
+    } else {
+      return {
+        order: 'dr_first',
+        drLabelBo: 'རྩིས་འགོ་ལ་བཏང་།',
+        drLabelEn: 'To Party / Advance (Dr)',
+        crLabelBo,
+        crLabelEn
+      };
+    }
+  }
+
+  if (vType === 'RECEIPT') {
+    const isIncome = crHead && crHead.group === 'income';
+    const drLabelBo = isDrCashBank ? 'བརྒྱུད་འབྱོར།' : 'རྩིས་འགོ་ལ་བཏང་།';
+    const drLabelEn = isDrCashBank ? 'Received Via (Dr)' : 'To Head (Dr)';
+    const crLabelBo = isIncome ? 'རྩིས་འགོ་ནང་བྱུང་།' : 'རྩིས་འགོ་ལ་བྱུང་།';
+    const crLabelEn = isIncome ? 'Received Under (Cr)' : 'From Party / Advance (Cr)';
+    return {
+      order: 'cr_first',
+      crLabelBo,
+      crLabelEn,
+      drLabelBo,
+      drLabelEn
+    };
+  }
+
+  if (vType === 'CONTRA') {
+    return {
+      order: 'cr_first',
+      crLabelBo: isCrCashBank ? 'བརྒྱུད་བཏང་།' : 'རྩིས་འགོ་གང་ནས།',
+      crLabelEn: 'Transfer From / Paid Via (Cr)',
+      drLabelBo: isDrCashBank ? 'བརྒྱུད་འབྱོར།' : 'རྩིས་འགོ་ལ་བཏང་།',
+      drLabelEn: 'Transfer To / Received Via (Dr)'
+    };
+  }
+
+  if (vType === 'JV') {
+    return {
+      order: 'dr_first',
+      drLabelBo: isDrCashBank ? 'བརྒྱུད་འབྱོར།' : 'རྩིས་འགོ་གང་ནས།',
+      drLabelEn: isDrCashBank ? 'Received Via (Dr)' : 'Debit Head (Dr)',
+      crLabelBo: isCrCashBank ? 'བརྒྱུད་བཏང་།' : 'རྩིས་འགོ་གང་ལ་བཏང་།',
+      crLabelEn: isCrCashBank ? 'Paid Through (Cr)' : 'Credit Head (Cr)'
+    };
+  }
+
+  return {
+    order: 'dr_first',
+    drLabelBo: isDrCashBank ? 'བརྒྱུད་འབྱོར།' : 'རྩིས་འགོ་ལ་བཏང་།',
+    drLabelEn: isDrCashBank ? 'Received Via (Dr)' : 'To Head (Dr)',
+    crLabelBo: isCrCashBank ? 'བརྒྱུད་བཏང་།' : 'རྩིས་འགོ་གང་ནས།',
+    crLabelEn: isCrCashBank ? 'Paid Through (Cr)' : 'From Head (Cr)'
+  };
+}
+
+function getHeadDisplayLabel(labelBo, labelEn, isDebit) {
+  const tag = isDebit ? '(Dr.)' : '(Cr.)';
+  if (state.lang === 'bo') {
+    return labelBo.includes('(') ? labelBo : `${labelBo} ${tag}`;
+  }
+  if (state.lang === 'en') {
+    return labelEn.includes('(') ? labelEn : `${labelEn} ${tag}`;
+  }
+  return `${labelBo} ${tag} • ${labelEn}`;
+}
+
+// Toast Notification
+function showToast(msg) {
+  const el = document.getElementById('iosToast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => {
+    el.classList.remove('show');
+  }, 3000);
+}
+
+// ============================================================================
+// UI Rendering
+// ============================================================================
+
+function renderAll() {
+  renderHeader();
+  renderMainContent();
+  renderBottomTabs();
+}
+
+function renderHeader() {
+  const langSelect = document.getElementById('langSelect');
+  const currSelect = document.getElementById('currSelect');
+  const bookSelect = document.getElementById('bookSelect');
+
+  if (langSelect) langSelect.value = state.lang;
+  if (currSelect) currSelect.value = state.currency;
+
+  if (bookSelect) {
+    const bookOptions = state.books
+      .map(
+        b =>
+          `<option value="${b.id}" ${b.id === state.activeBookId ? 'selected' : ''}>📘 ${t(b.bo, b.en)}</option>`
+      )
+      .join('');
+    const manageOption = `<option value="__MANAGE_BOOKS__">⚙️ ${t('རྩིས་དེབ་བཟོ་བཅོས་དང་བསུབ་པ།...', 'Manage, Edit & Delete Books...')}</option>`;
+    bookSelect.innerHTML = bookOptions + manageOption;
+  }
+}
+
+function renderBottomTabs() {
+  const tabs = [
+    { id: 'ledger', icon: '📒', bo: 'རྩིས་དེབ།', en: 'Cashbook' },
+    { id: 'heads', icon: '🗂️', bo: 'རྩིས་འགོ།', en: 'Account Heads' },
+    { id: 'account_ledger', icon: '📖', bo: 'དབྱེ་དེབ།', en: 'Ledger' },
+    { id: 'reports', icon: '📊', bo: 'ལྷག་ཤོག', en: 'Trial & BS' }
+  ];
+
+  const bar = document.getElementById('iosTabBar');
+  if (!bar) return;
+
+  bar.innerHTML = tabs
+    .map(
+      tab => `
+      <button class="tab-item ${state.activeTab === tab.id ? 'active' : ''}" onclick="switchTab('${tab.id}')">
+        <span class="tab-icon">${tab.icon}</span>
+        <span class="tab-label">${state.lang === 'en' ? tab.en : state.lang === 'bo' ? tab.bo : `${tab.bo} ${tab.en}`}</span>
+      </button>
+    `
+    )
+    .join('');
+}
+
+function switchTab(tabId) {
+  state.activeTab = tabId;
+  saveState();
+  renderAll();
+  const container = document.getElementById('iosContent');
+  if (container) container.scrollTop = 0;
+}
+
+function renderMainContent() {
+  const container = document.getElementById('iosContent');
+  if (!container) return;
+
+  if (state.activeTab === 'ledger') {
+    container.innerHTML = renderLedgerTab();
+  } else if (state.activeTab === 'heads') {
+    container.innerHTML = renderHeadsAndKhataTab();
+  } else if (state.activeTab === 'account_ledger' || state.activeTab === 'receipt') {
+    container.innerHTML = renderAccountLedgerTab();
+  } else if (state.activeTab === 'reports') {
+    container.innerHTML = renderReportsTab();
+  }
+}
+
+function doesTxMatchSearchQuery(tx, rawQuery) {
+  const q = (rawQuery || '').trim().toLowerCase();
+  if (!q) return true;
+  const toHead = getHead(tx.drHeadId);
+  const fromHead = getHead(tx.crHeadId);
+  const primaryHead = getHead(tx.primaryHeadId);
+  const haystack = [
+    tx.partyBo || '',
+    tx.partyEn || '',
+    tx.noteBo || '',
+    tx.noteEn || '',
+    tx.receiptNo || '',
+    tx.date || '',
+    String(tx.amount || ''),
+    toHead ? `${toHead.bo} ${toHead.en}` : '',
+    fromHead ? `${fromHead.bo} ${fromHead.en}` : '',
+    primaryHead ? `${primaryHead.bo} ${primaryHead.en}` : '',
+    tx.voucherType || ''
+  ]
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
+function getFilteredCashbookTransactions() {
+  const txs = getBookTransactions();
+  const activeDateFilter = state.ledgerDateFilter || '';
+  const activeSearch = state.ledgerSearchQuery || '';
+  return txs.filter(x => {
+    if (!isDateWithinPeriod(x.date)) return false;
+    if (activeDateFilter && x.date !== activeDateFilter) return false;
+    if (state.ledgerFilter !== 'all' && x.voucherType !== state.ledgerFilter) return false;
+    if (!doesTxMatchSearchQuery(x, activeSearch)) return false;
+    return true;
+  });
+}
+
+function renderCashbookTxItemsHtml(filtered) {
+  const activeDateFilter = state.ledgerDateFilter || '';
+  const activeSearch = (state.ledgerSearchQuery || '').trim();
+  if (filtered.length === 0) {
+    return `<div style="text-align:center;padding:30px 14px;color:#6C6C70;font-size:13px;">
+      ${
+        activeDateFilter || activeSearch
+          ? t(
+              `འཚོལ་ཞིབ་ (${[activeDateFilter, activeSearch].filter(Boolean).join(' / ')}) དང་མཐུན་པའི་རྩིས་ཐོ་མི་འདུག 'བསྐྱར་སྒྲིག' མནན་ནས་རྩིས་དུས་ནང་གི་རྩིས་ཐོ་ཚང་མ་གཟིགས་ཐུབ།`,
+              `No entries match (${[activeDateFilter, activeSearch].filter(Boolean).join(' / ')}). Tap 'Reset' to view all entries in the period.`
+            )
+          : t('རྩིས་ཐོ་མི་འདུག གོང་གི་མཐེབ་གཞོང་ནས་གསར་སྣོན་གནང་རོགས།', 'No entries in this period. Tap a button above to add.')
+      }
+    </div>`;
+  }
+
+  return filtered
+    .map(tx => {
+      const toHead = getHead(tx.drHeadId);
+      const fromHead = getHead(tx.crHeadId);
+      const primaryHead = getHead(tx.primaryHeadId);
+      const labels = getVoucherDynamicHeadLabels(tx);
+
+      const isIn = tx.voucherType === 'RECEIPT';
+      const isOut = tx.voucherType === 'PAYMENT';
+      const amtColor = isIn
+        ? 'color:#16A34A;'
+        : isOut
+        ? 'color:#DC2626;'
+        : tx.voucherType === 'CONTRA'
+        ? 'color:#0284C7;'
+        : 'color:#7C3AED;';
+      const sign = isIn ? '+' : isOut ? '-' : '';
+
+      const drDisp = getHeadDisplayLabel(labels.drLabelBo, labels.drLabelEn, true);
+      const crDisp = getHeadDisplayLabel(labels.crLabelBo, labels.crLabelEn, false);
+      const drHtml = `<div style="color:#15803D;">📥 <strong>${drDisp}:</strong> ${toHead.icon} ${t(toHead.bo, toHead.en)} <small>[${getHeadGroupShortText(toHead.group)}]</small></div>`;
+      const crHtml = `<div style="color:#B91C1C;">📤 <strong>${crDisp}:</strong> ${fromHead.icon} ${t(fromHead.bo, fromHead.en)} <small>[${getHeadGroupShortText(fromHead.group)}]</small></div>`;
+
+      return `
+      <div class="tx-card" style="align-items:flex-start;">
+        <div class="tx-left" style="align-items:flex-start;">
+          <div class="tx-icon ${isIn ? 'in' : 'out'}" style="${
+        tx.voucherType === 'CONTRA'
+          ? 'background:#E0F2FE;'
+          : tx.voucherType === 'JV'
+          ? 'background:#F3E8FF;'
+          : ''
+      }">${primaryHead.icon}</div>
+          <div class="tx-info">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="tx-cat-name">
+                ${
+                  tx.voucherType === 'JV'
+                    ? `${t(toHead.bo, toHead.en)} | ${t(fromHead.bo, fromHead.en)}`
+                    : tx.voucherType === 'CONTRA'
+                    ? `${t(fromHead.bo, fromHead.en)} → ${t(toHead.bo, toHead.en)}`
+                    : t(primaryHead.bo, primaryHead.en)
+                }
+              </span>
+              <span class="voucher-tag ${tx.voucherType}">${getVoucherDisplayBadge(tx.voucherType)}</span>
+            </div>
+            <div class="tx-note">${t(tx.partyBo || tx.noteBo, tx.partyEn || tx.noteEn)}</div>
+            <div class="tx-meta">
+              <span>📅 ${tx.date}</span>
+            </div>
+
+            ${
+              state.showDrCr
+                ? `<div class="drcr-box">
+                    ${labels.order === 'dr_first' ? `${drHtml}${crHtml}` : `${crHtml}${drHtml}`}
+                   </div>`
+                : ''
+            }
+          </div>
+        </div>
+        <div class="tx-right">
+          <div class="tx-amount" style="${amtColor}">
+            ${sign}${formatMoney(tx.amount)}
+          </div>
+          <div class="tx-mini-actions no-print">
+            <button class="mini-btn" onclick="openReceiptForTx('${tx.id}')">
+              🧾 ${state.lang === 'en' ? 'Slip' : 'བྱུང་འཛིན།'}
+            </button>
+            <button class="mini-btn" onclick="deleteTx('${tx.id}')" title="Delete">✕</button>
+          </div>
+        </div>
+      </div>
+    `;
+    })
+    .join('');
+}
+
+// ----------------------------------------------------------------------------
+// TAB 1: SMART HYBRID CASHBOOK & VOUCHERS (རྩིས་དེབ་ཨ་མ།)
+// ----------------------------------------------------------------------------
+function renderLedgerTab() {
+  const metrics = computeBookMetrics();
+  const activeDateFilter = state.ledgerDateFilter || '';
+  const activeSearch = state.ledgerSearchQuery || '';
+  const isDefaultResetState = !activeDateFilter && !activeSearch.trim();
+  const filtered = getFilteredCashbookTransactions();
+
+  return `
+    <!-- Accounting Period Selection Bar (རྩིས་དུས་འདེམས་སྒྲིག) + Apply Button -->
+    <div class="report-card no-print" style="background:#EFF6FF;border:1.5px solid #93C5FD;padding:10px 12px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
+        <span style="font-size:12.5px;font-weight:800;color:#1E3A8A;">
+          📅 ${t('རྩིས་དུས་འདེམས་སྒྲིག', 'Accounting Period')}
+        </span>
+        <span style="font-size:10px;background:#DCFCE7;color:#166534;padding:2px 7px;border-radius:99px;font-weight:800;">
+          💾 ${t('གཏན་འབེབས།', 'Active')}: ${state.periodFrom} → ${state.periodTo}
+        </span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="ios-input-group" style="margin-bottom:0;padding:5px 8px;">
+          <label class="ios-input-label" style="margin-bottom:1px;font-size:10px;">${t('འགོ་འཛུགས་ཚེས།', 'Start Date')}</label>
+          <input type="date" id="periodFromInput" class="ios-input" style="font-size:12.5px;" value="${state.periodFrom}" />
+        </div>
+        <div class="ios-input-group" style="margin-bottom:0;padding:5px 8px;">
+          <label class="ios-input-label" style="margin-bottom:1px;font-size:10px;">${t('མཇུག་སྒྲིལ་ཚེས།', 'End Date')}</label>
+          <input type="date" id="periodToInput" class="ios-input" style="font-size:12.5px;" value="${state.periodTo}" />
+        </div>
+      </div>
+
+      <div id="periodRangeErrorBox" style="display:none;margin-top:8px;padding:7px 10px;border-radius:8px;background:#FEE2E2;border:1.5px solid #EF4444;color:#991B1B;font-size:11.5px;font-weight:700;">
+        ⚠️ ${t(
+          'འགོ་འཛུགས་ཚེས་གྲངས་དེ་མཇུག་སྒྲིལ་ཚེས་གྲངས་ལས་མང་བ་ཡོང་མི་ཆོག',
+          'Start Date cannot be greater than End Date! Please check the dates.'
+        )}
+      </div>
+
+      <div style="margin-top:8px;">
+        <button type="button" class="action-btn" style="width:100%;background:#1E3A8A;color:#FEF08A;padding:9px 12px;font-size:13px;" onclick="applyAccountingPeriodInputs()">
+          ✅ ${t('རྩིས་དུས་གཏན་འབེབས།', 'Apply Accounting Period')}
+        </button>
+      </div>
+    </div>
+
+    <!-- Summary Balance Card: Whole Financial Picture (Cash + Bank + Income + Expense + Party Receivable Dr & Payable Cr) -->
+    <div class="summary-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+        <div class="balance-label">${t('མཐའ་མའི་ལག་དངུལ་དང་དངུལ་ཁང་།', 'Closing Cash + Bank')}</div>
+        <span style="font-size:11px;color:#FDE047;cursor:pointer;font-weight:700;" onclick="openOpeningBalanceModal()">
+          ⚙️ ${t('ཐོག་མའི་ལག་དངུལ་/དངུལ་ཁང་།', 'Opening Cash+Bank')}: ${formatMoney(metrics.openingTotalLiquid)}
+        </span>
+      </div>
+      <div class="balance-amount">${formatMoney(metrics.totalLiquid)}</div>
+
+      <!-- 1. Cash vs Bank Strip -->
+      <div class="cash-bank-strip">
+        <div class="cb-pill">
+          <span>💵 ${t('ལག་དངུལ།', 'Cash')}</span>
+          <strong style="color:#FEF08A;">${formatMoney(metrics.cashBalance)}</strong>
+        </div>
+        <div class="cb-pill">
+          <span>🏦 ${t('དངུལ་ཁང་།', 'Bank A/c')}</span>
+          <strong style="color:#38BDF8;">${formatMoney(metrics.bankBalance)}</strong>
+        </div>
+      </div>
+
+      <!-- 2. Period Income vs Expense -->
+      <div class="summary-metrics-grid">
+        <div class="metric-box">
+          <div class="metric-title">⬇️ ${t('ཡོང་འབབ་བསྡོམས།', 'Total Income')}</div>
+          <div class="metric-val income">+${formatMoney(metrics.totalIncome)}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-title">⬆️ ${t('འགྲོ་སོང་བསྡོམས།', 'Total Expense')}</div>
+          <div class="metric-val expense">-${formatMoney(metrics.totalExpense)}</div>
+        </div>
+      </div>
+
+      <!-- 3. Party Balances: Total Receivable (Dr Asset) & Total Payable (Cr Liability) -->
+      <div class="summary-metrics-grid" style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.22);">
+        <div class="metric-box" style="background:rgba(34,197,94,0.14);border:1px solid rgba(74,222,128,0.35);">
+          <div class="metric-title" style="color:#BBF7D0;">📥 ${t('མི་སྣ་བསྡུ་དགོས་དང་སྔ་འདོན།', 'Total Receivable / Adv')}</div>
+          <div class="metric-val" style="color:#4ADE80;font-size:14.5px;">
+            ${formatMoney(metrics.totalPartyReceivable)} <small style="font-size:10px;">${state.lang === 'en' ? 'Dr' : 'གཡོན།'}</small>
+          </div>
+        </div>
+        <div class="metric-box" style="background:rgba(244,63,94,0.16);border:1px solid rgba(251,113,133,0.35);">
+          <div class="metric-title" style="color:#FECDD3;">📤 ${t('མི་སྣ་སྤྲོད་དགོས་བུ་ལོན།', 'Total Payable / Due')}</div>
+          <div class="metric-val" style="color:#FDA4AF;font-size:14.5px;">
+            ${formatMoney(metrics.totalPartyPayable)} <small style="font-size:10px;">${state.lang === 'en' ? 'Cr' : 'གཡས།'}</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Whole Picture Balance Sheet Tally Strip -->
+      <div style="margin-top:8px;padding:6px 10px;border-radius:9px;background:rgba(0,0,0,0.28);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#FEF08A;cursor:pointer;" onclick="switchTab('reports')">
+        <span>⚖️ ${t('ལྷག་ཤོག་ཆ་ཚང་།', 'Whole Picture (BS)')}:</span>
+        <strong>${formatMoney(metrics.totalAssetsValue)} = ${formatMoney(metrics.totalLiabilitiesAndCapital)} →</strong>
+      </div>
+    </div>
+
+    <!-- 4 Quick Action Buttons: Receipt, Payment, དངུལ་བཅུག་བཏོན། (Contra), མཚུངས་ཁྲ། (JV) -->
+    <div class="quick-entry-grid-4 no-print">
+      <button class="action-btn cash-in" onclick="openEntryModal('in')">
+        <span>➕</span>
+        <span>${t('ཡོང་འབབ།', 'Receipt (In)')}</span>
+      </button>
+      <button class="action-btn cash-out" onclick="openEntryModal('out')">
+        <span>➖</span>
+        <span>${t('འགྲོ་སོང་།', 'Payment (Out)')}</span>
+      </button>
+      <button class="action-btn contra-btn" onclick="openEntryModal('contra')">
+        <span>🔄</span>
+        <span>${t('དངུལ་བཅུག་བཏོན།', 'Contra')}</span>
+      </button>
+      <button class="action-btn jv-btn" onclick="openEntryModal('jv')">
+        <span>📒</span>
+        <span>${t('མཚུངས་ཁྲ།', 'Journal (JV)')}</span>
+      </button>
+    </div>
+
+    <!-- Cash Book PDF Export Row -->
+    <div class="quick-entry-row no-print" style="margin-bottom:10px;">
+      <button class="action-btn" style="background:#0F172A;color:#FDE047;font-weight:800;font-size:12.5px;box-shadow:0 4px 14px rgba(15,23,42,0.22);display:flex;align-items:center;justify-content:center;gap:8px;" onclick="openCashBookPdfModal()">
+        <span>📥 🖨️</span>
+        <span>${t('རྩིས་དེབ་ PDF ཕྱིར་འདྲེན་དང་པར་འདེབས།', 'Export Cash Book PDF')}</span>
+      </button>
+    </div>
+
+    <!-- Voucher Type Filter Bar -->
+    <div class="segmented-bar no-print">
+      <button class="seg-btn ${state.ledgerFilter === 'all' ? 'active' : ''}" onclick="setLedgerFilter('all')">
+        ${t('ཚང་མ།', 'All')}
+      </button>
+      <button class="seg-btn ${state.ledgerFilter === 'RECEIPT' ? 'active' : ''}" onclick="setLedgerFilter('RECEIPT')">
+        ${t('བྱུང་།', 'In')}
+      </button>
+      <button class="seg-btn ${state.ledgerFilter === 'PAYMENT' ? 'active' : ''}" onclick="setLedgerFilter('PAYMENT')">
+        ${t('སོང་།', 'Out')}
+      </button>
+      <button class="seg-btn ${state.ledgerFilter === 'CONTRA' ? 'active' : ''}" onclick="setLedgerFilter('CONTRA')">
+        ${state.lang === 'en' ? 'Contra' : 'དངུལ་བཅུག་བཏོན།'}
+      </button>
+      <button class="seg-btn ${state.ledgerFilter === 'JV' ? 'active' : ''}" onclick="setLedgerFilter('JV')">
+        ${state.lang === 'en' ? 'JV' : 'མཚུངས་ཁྲ།'}
+      </button>
+    </div>
+
+    <!-- Section Header: ཉེ་ཆར་རྩིས་ཐོ། + Date Filter + བསྐྱར་སྒྲིག (Reset) -->
+    <div class="ios-section-title" style="flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+      <span id="cashbookTxCountBadge">${t('ཉེ་ཆར་རྩིས་ཐོ།', 'Recent Transactions')} (${filtered.length})</span>
+      <div class="no-print" style="display:flex;align-items:center;gap:5px;">
+        <button
+          type="button"
+          class="mini-btn"
+          style="background:#0F172A;color:#FDE047;border-color:#0F172A;font-weight:800;padding:4px 8px;"
+          onclick="openCashBookPdfModal()"
+          title="${t('རྩིས་དེབ་ PDF ཕྱིར་འདྲེན་དང་པར་འདེབས།', 'Export Cash Book PDF')}"
+        >
+          📄 PDF
+        </button>
+        <button
+          type="button"
+          id="cashbookResetBtn"
+          class="mini-btn"
+          style="padding:4px 9px;font-weight:800;background:${isDefaultResetState ? '#1E3A8A' : '#FFF'};color:${isDefaultResetState ? '#FEF08A' : '#1E293B'};border-color:#1E3A8A;"
+          onclick="resetCashbookFilters()"
+          title="${t('རྩིས་དུས་ནང་གི་རྩིས་ཐོ་ཚང་མ། (བསྐྱར་སྒྲིག)', 'Reset Date & Search')}"
+        >
+          ${t('བསྐྱར་སྒྲིག', 'Reset')}
+        </button>
+        <input
+          type="date"
+          class="mini-btn"
+          style="padding:3px 6px;font-size:11.5px;background:${activeDateFilter ? '#FEF3C7' : '#FFF'};border-color:${activeDateFilter ? '#D97706' : '#CBD5E1'};color:#1E293B;"
+          min="${state.periodFrom}"
+          max="${state.periodTo}"
+          value="${activeDateFilter}"
+          onchange="setLedgerDateFilter(this.value)"
+        />
+        <button class="mini-btn" onclick="toggleDrCrView()" style="background:${state.showDrCr ? '#FEF3C7' : '#FFF'};border-color:#D97706;color:#78350F;">
+          ${state.showDrCr ? '⚡ རྩིས་འགོ་གང་ནས་/གང་ལ་' : '👁️'}
+        </button>
+      </div>
+    </div>
+
+    <!-- Word Search Bar for Recent Transactions (ཉེ་ཆར་རྩིས་ཐོའི་ཚིག་འཚོལ་) -->
+    <div class="ios-input-group no-print" style="margin-bottom:10px;padding:6px 10px;display:flex;align-items:center;gap:8px;border:1.5px solid #CBD5E1;">
+      <span style="font-size:14px;">🔍</span>
+      <input
+        type="text"
+        id="cashbookSearchInput"
+        class="ios-input"
+        style="font-size:13px;"
+        placeholder="${t('ཉེ་ཆར་རྩིས་ཐོའི་ནང་ཚིག་འཚོལ་... (མིང་ / རྩིས་འགོ་ / གསལ་བཤད་ / དངུལ་འབོར།)', 'Search word in Recent Transactions (name, head, note, amount)...')}"
+        value="${activeSearch.replace(/"/g, '&quot;')}"
+        oninput="setCashbookSearchQuery(this.value)"
+      />
+      ${
+        activeSearch
+          ? `<button type="button" class="mini-btn" style="padding:2px 7px;" onclick="resetCashbookFilters()">✕</button>`
+          : ''
+      }
+    </div>
+
+    <div class="tx-list" id="cashbookTxListContainer">
+      ${renderCashbookTxItemsHtml(filtered)}
+    </div>
+  `;
+}
+
+function setLedgerFilter(filter) {
+  state.ledgerFilter = filter;
+  renderMainContent();
+}
+
+function setLedgerDateFilter(dateStr) {
+  state.ledgerDateFilter = dateStr || '';
+  saveState();
+  renderMainContent();
+}
+
+function setCashbookSearchQuery(queryStr) {
+  state.ledgerSearchQuery = queryStr || '';
+  saveState();
+  const filtered = getFilteredCashbookTransactions();
+  const listEl = document.getElementById('cashbookTxListContainer');
+  if (listEl) {
+    listEl.innerHTML = renderCashbookTxItemsHtml(filtered);
+  }
+  const badgeEl = document.getElementById('cashbookTxCountBadge');
+  if (badgeEl) {
+    badgeEl.textContent = `${t('ཉེ་ཆར་རྩིས་ཐོ།', 'Recent Transactions')} (${filtered.length})`;
+  }
+  const resetBtn = document.getElementById('cashbookResetBtn');
+  if (resetBtn) {
+    const isDefault = !state.ledgerDateFilter && !(state.ledgerSearchQuery || '').trim();
+    resetBtn.style.background = isDefault ? '#1E3A8A' : '#FFF';
+    resetBtn.style.color = isDefault ? '#FEF08A' : '#1E293B';
+  }
+}
+
+function resetCashbookFilters() {
+  state.ledgerDateFilter = '';
+  state.ledgerSearchQuery = '';
+  saveState();
+  renderMainContent();
+}
+
+function toggleDrCrView() {
+  state.showDrCr = !state.showDrCr;
+  saveState();
+  renderMainContent();
+}
+
+function openReceiptForTx(txId) {
+  state.selectedReceiptTxId = txId;
+  saveState();
+  const sheet = document.getElementById('modalSheet');
+  if (!sheet) return;
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">🧾 ${t('རྩིས་དེབ་འཛིན་ཤོག', 'Official Voucher Slip')}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+    ${renderReceiptTab()}
+  `;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function deleteTx(txId) {
+  confirmDeleteTx(txId);
+}
+
+function confirmDeleteTx(txId) {
+  const tx = state.transactions.find(t => t.id === txId);
+  if (!tx) return;
+
+  const toHead = getHead(tx.drHeadId);
+  const fromHead = getHead(tx.crHeadId);
+  const sheet = document.getElementById('modalSheet');
+
+  if (!sheet) {
+    const ok = window.confirm(
+      state.lang === 'bo'
+        ? `⚠️ རྩིས་ཐོ་ ${tx.receiptNo || tx.id} (${formatMoney(tx.amount)}) འདི་བསུབ་རྒྱུ་གཏན་འཁེལ་ཡིན་ནམ།`
+        : `⚠️ Are you sure you want to delete entry ${tx.receiptNo || tx.id} (${formatMoney(tx.amount)})?`
+    );
+    if (ok) executeDeleteTx(txId);
+    return;
+  }
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" style="color:#DC2626;">🗑️ ${t('རྩིས་ཐོ་བསུབ་རྒྱུ་གཏན་འཁེལ་ཡིན་ནམ།', 'Confirm Delete Entry?')}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:14px;padding:12px 14px;margin-bottom:12px;">
+      <div style="font-weight:800;color:#991B1B;font-size:13.5px;margin-bottom:4px;">
+        ⚠️ ${t('ཁྱེད་ཀྱིས་རྩིས་ཐོ་འདི་བསུབ་རྒྱུ་གཏན་འཁེལ་ཡིན་ནམ།', 'Are you sure you want to delete this entry?')}
+      </div>
+      <div style="font-size:11.5px;color:#7F1D1D;line-height:1.5;">
+        ${t('རྩིས་ཐོ་འདི་བསུབས་ཚེ་རྩིས་དེབ་དང་། དབྱེ་དེབ། ཚོད་བལྟའི་རྩིས་ཤོག ལྷག་ཤོག་བཅས་ནས་མཉམ་དུ་བསུབ་རྒྱུ་ཡིན།', 'This transaction will be permanently removed from your Cashbook, Ledger, Trial Balance, and Balance Sheet.')}
+      </div>
+    </div>
+
+    <!-- Transaction Summary Card -->
+    <div style="background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:14px;padding:12px 14px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span class="voucher-tag ${tx.voucherType}">${getVoucherDisplayBadge(tx.voucherType)}</span>
+        <span style="font-size:12px;font-weight:700;color:#64748B;">📅 ${tx.date}</span>
+      </div>
+      <div style="font-size:20px;font-weight:900;color:#0F172A;margin-bottom:6px;">
+        💰 ${formatMoney(tx.amount)}
+      </div>
+      <div style="font-size:12.5px;font-weight:700;color:#1E293B;margin-bottom:4px;">
+        ${toHead.icon} ${t(toHead.bo, toHead.en)} ↔ ${fromHead.icon} ${t(fromHead.bo, fromHead.en)}
+      </div>
+      <div style="font-size:12px;color:#64748B;line-height:1.4;">
+        ${t(tx.partyBo || tx.noteBo, tx.partyEn || tx.noteEn)}
+      </div>
+      <div style="font-size:11px;color:#94A3B8;margin-top:6px;">
+        🧾 ཨང་། / No: <strong>${tx.receiptNo || tx.id}</strong>
+      </div>
+    </div>
+
+    <!-- Confirmation Action Buttons -->
+    <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:10px;">
+      <button class="action-btn" style="background:#E2E8F0;color:#334155;padding:12px;font-size:14px;font-weight:700;" onclick="closeModal()">
+        ✕ ${t('ཕྱིར་འཐེན།', 'Cancel')}
+      </button>
+      <button class="action-btn" style="background:#DC2626;color:#FFF;padding:12px;font-size:14px;font-weight:800;" onclick="executeDeleteTx('${tx.id}')">
+        🗑️ ${t('གཏན་འཁེལ་བསུབས།', 'Delete Entry')}
+      </button>
+    </div>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function executeDeleteTx(txId) {
+  state.transactions = state.transactions.filter(t => t.id !== txId);
+  if (state.selectedReceiptTxId === txId) {
+    const remaining = getBookTransactions();
+    state.selectedReceiptTxId = remaining.length > 0 ? remaining[0].id : null;
+  }
+  saveState();
+  closeModal();
+  renderAll();
+  showToast(t('✅ རྩིས་ཐོ་བསུབས་ཟིན།', '✅ Entry removed successfully'));
+}
+
+// ----------------------------------------------------------------------------
+// TAB 2: ACCOUNT HEADS MANAGER & KHATA (རྩིས་འགོ་དང་བུ་ལོན།)
+// ----------------------------------------------------------------------------
+function renderHeadsAndKhataTab() {
+  const tb = computeTrialBalanceAndBS();
+  const closeMap = {};
+  tb.rows.forEach(r => {
+    closeMap[r.head.id] = r.closeNet;
+  });
+
+  const groupLabels = [
+    {
+      key: 'cash_bank',
+      bo: '🏦 ལག་དངུལ་དང་དངུལ་ཁང་རྩིས་འགོ། (ལྷག་ཤོག)',
+      en: 'Cash & Bank Heads (Balance Sheet)'
+    },
+    {
+      key: 'party_jv',
+      bo: '🤝 མི་སྣ་དང་སྔ་འདོན་རྩིས་འགོ། (ལྷག་ཤོག: གཡོན།=རྒྱུ་དངོས། / གཡས།=བུ་ལོན།)',
+      en: 'Party & Advance Heads (Auto BS: Dr=Asset, Cr=Liability)'
+    },
+    {
+      key: 'expense',
+      bo: '🔴 འགྲོ་སོང་རྩིས་འགོ།',
+      en: 'Expense Account Heads'
+    },
+    {
+      key: 'income',
+      bo: '🟢 ཡོང་འབབ་རྩིས་འགོ།',
+      en: 'Income Account Heads'
+    }
+  ];
+
+  const list = state.khataList;
+
+  return `
+    <!-- Create New Account Head Banner -->
+    <div class="summary-card" style="background: linear-gradient(145deg, #4C0519 0%, #1E293B 100%);padding:14px;">
+      <div style="font-size:15px;font-weight:800;color:#FEF08A;margin-bottom:4px;">
+        🗂️ ${t('རྩིས་འགོའི་ཐོ་གཞུང་།', 'Chart of Account Heads')}
+      </div>
+      <div style="font-size:11.5px;color:#E2E8F0;margin-bottom:10px;">
+        ${t(
+          'མི་སྣ་དང་སྔ་འདོན་རྩིས་འགོའི་མཐའ་མའི་ལྷག་མ་ གཡོན། ཡིན་ན་རྒྱུ་དངོས་དང་ གཡས། ཡིན་ན་བུ་ལོན་ནང་རང་འགུལ་གྱིས་ལྷག་ཤོག་ནང་འགྲོ་གི་རེད།',
+          'Party & Advance heads automatically group into Assets (if Closing Dr) or Liabilities (if Closing Cr) on the Balance Sheet!'
+        )}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="action-btn" style="flex:1;background:#FDE047;color:#4C0519;" onclick="openCreateHeadModal()">
+          ➕ ${t('རྩིས་འགོ་གསར་པ།', 'New Head')}
+        </button>
+        <button class="action-btn" style="flex:1;background:rgba(255,255,255,0.16);color:#FFF;border:1px solid rgba(255,255,255,0.3);" onclick="openOpeningBalanceModal()">
+          ⚙️ ${t('ཐོག་མའི་ལྷག་མ།', 'Opening Bal')}
+        </button>
+      </div>
+    </div>
+
+    <!-- Account Heads Grouped Display -->
+    ${groupLabels
+      .map(g => {
+        const heads = state.accountHeads.filter(h => h.group === g.key);
+        return `
+        <div class="report-card" style="padding:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-size:12.5px;font-weight:800;color:#1E293B;">${t(g.bo, g.en)}</span>
+            <button class="mini-btn" onclick="openCreateHeadModal('${g.key}')">+ ${t('གསར་སྣོན།', 'Add')}</button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            ${heads
+              .map(h => {
+                const cNet = closeMap[h.id] || 0;
+                let bsTag = '';
+                if ((h.group === 'party_jv' || h.group === 'cash_bank') && cNet !== 0) {
+                  bsTag =
+                    cNet > 0
+                      ? `<small style="color:#15803D;font-weight:800;">[${t('རྒྱུ་དངོས།', 'Asset')}: ${formatMoney(cNet)} ${state.lang === 'en' ? 'Dr' : 'གཡོན།'}]</small>`
+                      : `<small style="color:#B91C1C;font-weight:800;">[${t('བུ་ལོན།', 'Liability')}: ${formatMoney(Math.abs(cNet))} ${state.lang === 'en' ? 'Cr' : 'གཡས།'}]</small>`;
+                }
+                return `
+                <span
+                  onclick="openHeadInAccountLedger('${h.id}')"
+                  title="${t('དབྱེ་དེབ་ནང་གཟིགས།', 'Open in Ledger')}"
+                  style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;cursor:pointer;"
+                >
+                  ${h.icon} ${t(h.bo, h.en)} ${bsTag}
+                </span>
+              `;
+              })
+              .join('')}
+          </div>
+        </div>
+      `;
+      })
+      .join('')}
+
+    <!-- Customer / Supplier Credit Reminders (WhatsApp) -->
+    <div class="ios-section-title" style="margin-top:12px;">
+      <span>🤝 ${t('མི་སྣའི་བུ་ལོན་དང་ WhatsApp དྲན་སྐུལ།', 'Party Credit & WhatsApp Reminders')}</span>
+      <button class="mini-btn" onclick="openKhataModal()">+ ${t('བུ་ལོན་ཐོ་འགོད།', 'Add Party')}</button>
+    </div>
+
+    ${list
+      .map(item => {
+        const isReceive = item.type === 'receive';
+        return `
+        <div class="khata-card">
+          <div class="khata-top">
+            <div>
+              <div class="khata-name">${t(item.nameBo, item.nameEn)}</div>
+              <div class="khata-phone">📞 ${item.phone} • ${t(item.noteBo, item.noteEn)}</div>
+            </div>
+            <div class="khata-bal">
+              <div class="khata-bal-label" style="color:${isReceive ? '#16A34A' : '#DC2626'}">
+                ${isReceive ? t('བསྡུ་དགོས་པ།', 'TO RECEIVE') : t('སྤྲོད་དགོས་པ།', 'TO PAY')}
+              </div>
+              <div class="khata-bal-val" style="color:${isReceive ? '#16A34A' : '#DC2626'}">
+                ${formatMoney(item.amount)}
+              </div>
+            </div>
+          </div>
+          <div class="khata-actions no-print">
+            <button class="khata-btn whatsapp" onclick="sendWhatsAppReminder('${item.id}')">
+              💬 ${t('WhatsApp དྲན་སྐུལ།', 'WhatsApp Reminder')}
+            </button>
+            <button class="khata-btn" onclick="settleKhataItem('${item.id}')">
+              ✅ ${t('རྩིས་གཙང་བཟོས།', 'Settle in Cash')}
+            </button>
+          </div>
+        </div>
+      `;
+      })
+      .join('')}
+  `;
+}
+
+// ----------------------------------------------------------------------------
+// TAB 3: OFFICIAL BILINGUAL RECEIPT & VOUCHER SLIP (བྱུང་འཛིན།)
+// ----------------------------------------------------------------------------
+function renderReceiptTab() {
+  const bookTxs = getBookTransactions();
+  const tx =
+    state.transactions.find(x => x.id === state.selectedReceiptTxId) ||
+    bookTxs[0] ||
+    state.transactions[0];
+
+  const book = getActiveBook();
+  const toHead = tx ? getHead(tx.drHeadId) : getHead('head_cash');
+  const fromHead = tx ? getHead(tx.crHeadId) : getHead('donation');
+  const labels = tx ? getVoucherDynamicHeadLabels(tx) : {
+    order: 'dr_first',
+    drLabelBo: 'རྩིས་འགོ་ལ་བཏང་།',
+    drLabelEn: 'To Head (Dr)',
+    crLabelBo: 'བརྒྱུད་བཏང་།',
+    crLabelEn: 'Paid Through (Cr)'
+  };
+
+  const drLabelDisplay = getHeadDisplayLabel(labels.drLabelBo, labels.drLabelEn, true);
+  const crLabelDisplay = getHeadDisplayLabel(labels.crLabelBo, labels.crLabelEn, false);
+
+  const drRowHtml = `
+    <div class="receipt-row">
+      <span class="receipt-row-label">${drLabelDisplay}:</span>
+      <span class="receipt-row-val">${toHead.icon} ${t(toHead.bo, toHead.en)}</span>
+    </div>
+  `;
+  const crRowHtml = `
+    <div class="receipt-row">
+      <span class="receipt-row-label">${crLabelDisplay}:</span>
+      <span class="receipt-row-val">${fromHead.icon} ${t(fromHead.bo, fromHead.en)}</span>
+    </div>
+  `;
+
+  const badgeTitle =
+    tx && tx.voucherType === 'RECEIPT'
+      ? 'བྱུང་འཛིན། • OFFICIAL RECEIPT'
+      : tx && tx.voucherType === 'PAYMENT'
+      ? 'འགྲོ་སོང་འཛིན་ཤོག • PAYMENT VOUCHER'
+      : tx && tx.voucherType === 'CONTRA'
+      ? 'དངུལ་བཅུག་བཏོན། • CONTRA VOUCHER'
+      : 'མཚུངས་ཁྲ། • JOURNAL VOUCHER (JV)';
+
+  return `
+    <div class="ios-section-title no-print">
+      <span>${t('རྩིས་ཐོ་འདེམས་ནས་བྱུང་འཛིན་བཟོས།', 'Select Entry to Generate Official Voucher')}</span>
+    </div>
+
+    <div class="ios-input-group no-print" style="margin-bottom:14px;">
+      <select class="ios-input" style="font-size:13px;" onchange="selectReceiptTx(this.value)">
+        ${state.transactions
+          .map(
+            item => `
+          <option value="${item.id}" ${tx && item.id === tx.id ? 'selected' : ''}>
+            [${item.voucherType === 'JV' ? 'མཚུངས་ཁྲ། JV' : item.voucherType}] ${item.date} • ${item.partyBo || item.partyEn} (${formatMoney(item.amount)})
+          </option>
+        `
+          )
+          .join('')}
+      </select>
+    </div>
+
+    ${
+      tx
+        ? `
+      <div class="receipt-paper" id="printableReceipt">
+        <div class="receipt-header">
+          <div class="receipt-yiggo">༄༅། །བོད་ཀྱི་རྩིས་དེབ་འཛིན་ཤོག</div>
+          <div class="receipt-org">${book.bo}</div>
+          <div style="font-size:12px;color:#78350F;font-weight:600;">${book.en}</div>
+          <span class="receipt-badge">${badgeTitle}</span>
+        </div>
+
+        <div class="receipt-row">
+          <span class="receipt-row-label">ཨང་རྟགས། / Voucher No:</span>
+          <span class="receipt-row-val">${tx.receiptNo || 'TAB-2026-099'}</span>
+        </div>
+        <div class="receipt-row">
+          <span class="receipt-row-label">ཚེས་གྲངས། / Date:</span>
+          <span class="receipt-row-val">${tx.date}</span>
+        </div>
+        ${labels.order === 'dr_first' ? `${drRowHtml}${crRowHtml}` : `${crRowHtml}${drRowHtml}`}
+        <div class="receipt-row">
+          <span class="receipt-row-label">གསལ་བཤད། / Narration:</span>
+          <span class="receipt-row-val">${tx.noteBo}<br><small style="color:#6C6C70;">${tx.noteEn}</small></span>
+        </div>
+
+        <div class="receipt-total-box">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#881337;">ཁྱོན་བསྡོམས་དངུལ་འབོར།</div>
+            <div style="font-size:11px;color:#78350F;">TOTAL VOUCHER AMOUNT</div>
+          </div>
+          <div style="font-size:22px;font-weight:900;color:#4C0519;">
+            ${formatMoney(tx.amount)}
+          </div>
+        </div>
+
+        <div class="receipt-stamp">
+          <div style="font-size:11px;color:#78350F;line-height:1.4;">
+            <strong>ཐུགས་རྗེ་ཆེ། • Thank You!</strong><br>
+            Tibetan Account Book • བོད་ཀྱི་རྩིས་དེབ།
+          </div>
+          <div class="seal-circle">
+            <span>༄༅། །</span>
+            <span>${book.orgSealBo}</span>
+            <span style="font-size:7px;">VERIFIED</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="quick-entry-row no-print">
+        <button class="action-btn cash-in" onclick="shareReceiptWhatsApp('${tx.id}')">
+          💬 ${t('WhatsApp ཐོག་བསྐུར།', 'Share on WhatsApp')}
+        </button>
+        <button class="action-btn" style="background:#1E293B;color:#FFFFFF;" onclick="window.print()">
+          🖨️ ${t('PDF / པར་འདེབས།', 'Print / Save PDF')}
+        </button>
+      </div>
+      <div class="no-print" style="margin-top:8px;text-align:center;">
+        <button type="button" class="mini-btn" style="background:#FEE2E2;color:#DC2626;border-color:#FCA5A5;padding:6px 14px;font-size:12px;font-weight:700;" onclick="deleteTx('${tx.id}')">
+          🗑️ ${t('རྩིས་ཐོ་འདི་བསུབས།', 'Delete This Entry')}
+        </button>
+      </div>
+    `
+        : ''
+    }
+  `;
+}
+
+function selectReceiptTx(txId) {
+  state.selectedReceiptTxId = txId;
+  saveState();
+  const sheet = document.getElementById('modalSheet');
+  if (sheet && document.getElementById('modalBackdrop').classList.contains('open')) {
+    sheet.innerHTML = `
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title">🧾 ${t('རྩིས་དེབ་འཛིན་ཤོག', 'Official Voucher Slip')}</div>
+        <button class="sheet-close" onclick="closeModal()">✕</button>
+      </div>
+      ${renderReceiptTab()}
+    `;
+  } else {
+    renderMainContent();
+  }
+}
+
+// ----------------------------------------------------------------------------
+// TAB 3: དབྱེ་དེབ། (ACCOUNT LEDGER • LEDGER-WISE DISPLAY WITH DATE, RESET & SEARCH)
+// ----------------------------------------------------------------------------
+function openHeadInAccountLedger(headId) {
+  state.selectedAccountLedgerHeadId = headId || 'ALL';
+  state.activeTab = 'account_ledger';
+  saveState();
+  renderAll();
+  const container = document.getElementById('iosContent');
+  if (container) container.scrollTop = 0;
+}
+
+function selectAccountLedgerHead(headId) {
+  state.selectedAccountLedgerHeadId = headId || 'ALL';
+  saveState();
+  renderMainContent();
+}
+
+function setAccountLedgerDateFilter(dateStr) {
+  state.accountLedgerDateFilter = dateStr || '';
+  saveState();
+  renderMainContent();
+}
+
+function setAccountLedgerSearchQuery(queryStr) {
+  state.accountLedgerSearchQuery = queryStr || '';
+  saveState();
+  const cardsEl = document.getElementById('accountLedgerCardsContainer');
+  if (cardsEl) {
+    cardsEl.innerHTML = renderAccountLedgerCardsHtml();
+  }
+  const resetBtn = document.getElementById('accountLedgerResetBtn');
+  if (resetBtn) {
+    const isDefault =
+      !state.accountLedgerDateFilter && !(state.accountLedgerSearchQuery || '').trim();
+    resetBtn.style.background = isDefault ? '#1E3A8A' : '#FFF';
+    resetBtn.style.color = isDefault ? '#FEF08A' : '#1E293B';
+  }
+}
+
+function resetAccountLedgerFilters() {
+  state.accountLedgerDateFilter = '';
+  state.accountLedgerSearchQuery = '';
+  saveState();
+  renderMainContent();
+}
+
+function renderAccountLedgerCardsHtml() {
+  const bookTxs = getBookTransactions();
+  const activeDate = state.accountLedgerDateFilter || '';
+  const activeSearch = (state.accountLedgerSearchQuery || '').trim();
+  const selectedHeadId = state.selectedAccountLedgerHeadId || 'ALL';
+
+  // Period transactions sorted oldest -> newest so running balance flows chronologically
+  const periodTxsChrono = bookTxs
+    .filter(tx => isDateWithinPeriod(tx.date))
+    .slice()
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  const candidateHeads =
+    selectedHeadId === 'ALL'
+      ? state.accountHeads
+      : state.accountHeads.filter(h => h.id === selectedHeadId);
+
+  const drShort = state.lang === 'en' ? 'Dr' : 'གཡོན།';
+  const crShort = state.lang === 'en' ? 'Cr' : 'གཡས།';
+
+  const cardsHtml = [];
+
+  candidateHeads.forEach(head => {
+    const openNet = getHeadOpeningBalance(head.id);
+    // All transactions in the accounting period that touch this head
+    const headPeriodTxs = periodTxsChrono.filter(
+      tx => tx.drHeadId === head.id || tx.crHeadId === head.id
+    );
+
+    // Compute running balance across the period for this head
+    let runningNet = openNet;
+    const enrichedRows = headPeriodTxs.map(tx => {
+      const isDr = tx.drHeadId === head.id;
+      const drAmt = isDr ? Number(tx.amount) || 0 : 0;
+      const crAmt = !isDr ? Number(tx.amount) || 0 : 0;
+      runningNet += drAmt - crAmt;
+      const oppositeHead = getHead(isDr ? tx.crHeadId : tx.drHeadId);
+      return {
+        tx,
+        isDr,
+        drAmt,
+        crAmt,
+        runningNet,
+        oppositeHead
+      };
+    });
+
+    // Apply Date filter and Word Search filter to the rows displayed
+    const visibleRows = enrichedRows.filter(row => {
+      if (activeDate && row.tx.date !== activeDate) return false;
+      if (activeSearch) {
+        const headNameMatch = `${head.bo} ${head.en}`
+          .toLowerCase()
+          .includes(activeSearch.toLowerCase());
+        if (!headNameMatch && !doesTxMatchSearchQuery(row.tx, activeSearch)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // When viewing ALL ledgers, skip heads that have 0 opening and 0 matching rows
+    if (selectedHeadId === 'ALL') {
+      if (activeDate || activeSearch) {
+        if (visibleRows.length === 0) return;
+      } else if (openNet === 0 && headPeriodTxs.length === 0) {
+        return;
+      }
+    }
+
+    let totalDr = 0;
+    let totalCr = 0;
+    visibleRows.forEach(r => {
+      totalDr += r.drAmt;
+      totalCr += r.crAmt;
+    });
+
+    const closeNet = runningNet;
+    const openSide = openNet >= 0 ? drShort : crShort;
+    const closeSide = closeNet >= 0 ? drShort : crShort;
+
+    const isCashBankHead = head.group === 'cash_bank';
+    const drHeaderLabel = isCashBankHead
+      ? t('གཡོན་རྩིས།/བྱུང་།', 'Debit (Receipts) Dr')
+      : t('གཡོན་རྩིས།/སོང་།', 'Debit Dr');
+    const crHeaderLabel = isCashBankHead
+      ? t('གཡས་རྩིས།/སོང་།', 'Credit (Payments) Cr')
+      : t('གཡས་རྩིས།/བྱུང་།', 'Credit Cr');
+
+    cardsHtml.push(`
+      <div class="report-card" style="border:1.5px solid #CBD5E1;padding:12px;margin-bottom:12px;">
+        <!-- Ledger Account Head Header -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;border-bottom:1.5px dashed #CBD5E1;padding-bottom:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:14.5px;font-weight:800;color:#4C0519;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span>${head.icon} ${t(head.bo, head.en)}</span>
+            </div>
+            <div style="font-size:10.5px;color:#0369A1;font-weight:700;margin-top:2px;">
+              [${getHeadGroupLabel(head.group)}]
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:10.5px;color:#6C6C70;font-weight:700;">
+              ${t('ཐོག་མ།', 'Opening')}:
+              <strong style="color:#0369A1;">
+                ${openNet === 0 ? '—' : `${formatMoney(Math.abs(openNet))} ${openSide}`}
+              </strong>
+            </div>
+            <div style="font-size:12px;font-weight:900;color:${closeNet >= 0 ? '#15803D' : '#B91C1C'};margin-top:2px;">
+              ${t('མཐའ་མ།', 'Closing')}:
+              ${closeNet === 0 ? '0' : `${formatMoney(Math.abs(closeNet))} ${closeSide}`}
+            </div>
+          </div>
+        </div>
+
+        <!-- Ledger Table -->
+        <div style="overflow-x:auto;">
+          <table class="fin-table">
+            <thead>
+              <tr>
+                <th style="text-align:left;">${t('ཚེས།', 'Date')}</th>
+                <th style="text-align:left;">${t('ཁ་གཏད་རྩིས་འགོ་དང་གསལ་བཤད།', 'Particulars / Narration')}</th>
+                <th style="text-align:right;">${drHeaderLabel}</th>
+                <th style="text-align:right;">${crHeaderLabel}</th>
+                <th style="text-align:right;">${t('ལྷག་མ།', 'Balance')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                !activeDate && !activeSearch && openNet !== 0
+                  ? `<tr style="background:#F0F9FF;">
+                      <td style="font-size:10.5px;color:#0369A1;font-weight:700;">${state.periodFrom}</td>
+                      <td style="font-weight:700;color:#0369A1;">🏁 ${t('ཐོག་མའི་ལྷག་མ།', 'Opening Balance b/f')}</td>
+                      <td style="text-align:right;color:#15803D;font-weight:700;">${openNet > 0 ? formatMoney(openNet) : '—'}</td>
+                      <td style="text-align:right;color:#B91C1C;font-weight:700;">${openNet < 0 ? formatMoney(Math.abs(openNet)) : '—'}</td>
+                      <td style="text-align:right;font-weight:800;color:#0369A1;">${formatMoney(Math.abs(openNet))} <small>${openSide}</small></td>
+                    </tr>`
+                  : ''
+              }
+              ${
+                visibleRows.length === 0
+                  ? `<tr>
+                      <td colspan="5" style="text-align:center;color:#6C6C70;padding:14px 8px;">
+                        ${t('དུས་ཡུན་འདིའི་ནང་རྩིས་ཐོ་མི་འདུག', 'No ledger entries for this filter.')}
+                      </td>
+                    </tr>`
+                  : visibleRows
+                      .map(r => {
+                        const balSide = r.runningNet >= 0 ? drShort : crShort;
+                        const oppLabel = r.isDr
+                          ? `📤 ${t('གང་ནས།', 'From')}: ${r.oppositeHead.icon} ${t(r.oppositeHead.bo, r.oppositeHead.en)}`
+                          : `📥 ${t('ལ་བཏང་།', 'To')}: ${r.oppositeHead.icon} ${t(r.oppositeHead.bo, r.oppositeHead.en)}`;
+                        return `
+                          <tr>
+                            <td style="font-size:10.5px;white-space:nowrap;">
+                              <div>${r.tx.date}</div>
+                              <span class="voucher-tag ${r.tx.voucherType}" style="font-size:8.5px;padding:1px 4px;">${getVoucherDisplayBadge(r.tx.voucherType)}</span>
+                            </td>
+                            <td>
+                              <div style="font-weight:700;font-size:11.5px;color:#1E293B;">${oppLabel}</div>
+                              <div style="font-size:10.5px;color:#6C6C70;">${t(r.tx.partyBo || r.tx.noteBo, r.tx.partyEn || r.tx.noteEn)}</div>
+                            </td>
+                            <td style="text-align:right;color:#15803D;font-weight:700;">
+                              ${r.drAmt > 0 ? formatMoney(r.drAmt) : '—'}
+                            </td>
+                            <td style="text-align:right;color:#B91C1C;font-weight:700;">
+                              ${r.crAmt > 0 ? formatMoney(r.crAmt) : '—'}
+                            </td>
+                            <td style="text-align:right;font-weight:800;color:${r.runningNet >= 0 ? '#15803D' : '#B91C1C'};">
+                              ${r.runningNet === 0 ? '0' : `${formatMoney(Math.abs(r.runningNet))} <small>${balSide}</small>`}
+                            </td>
+                          </tr>
+                        `;
+                      })
+                      .join('')
+              }
+            </tbody>
+            <tfoot>
+              <tr style="background:#FEF3C7;font-weight:900;color:#4C0519;">
+                <td colspan="2">${t('ཁྱོན་བསྡོམས་དང་མཐའ་མའི་ལྷག་མ།', 'Total & Closing Balance')}</td>
+                <td style="text-align:right;color:#15803D;">${formatMoney(totalDr)}</td>
+                <td style="text-align:right;color:#B91C1C;">${formatMoney(totalCr)}</td>
+                <td style="text-align:right;">
+                  ${closeNet === 0 ? '0' : `${formatMoney(Math.abs(closeNet))} <small>${closeSide}</small>`}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `);
+  });
+
+  if (cardsHtml.length === 0) {
+    return `
+      <div class="report-card" style="text-align:center;padding:28px 14px;color:#6C6C70;font-size:13px;">
+        ${t(
+          "འཚོལ་ཞིབ་དང་མཐུན་པའི་དབྱེ་དེབ་རྩིས་ཐོ་མི་འདུག 'བསྐྱར་སྒྲིག' མནན་ནས་དབྱེ་དེབ་ཚང་མ་གཟིགས་ཐུབ།",
+          "No ledger entries match your filter. Tap 'Reset' to view all ledgers."
+        )}
+      </div>
+    `;
+  }
+
+  return cardsHtml.join('');
+}
+
+function renderAccountLedgerTab() {
+  const selectedHeadId = state.selectedAccountLedgerHeadId || 'ALL';
+  const activeDate = state.accountLedgerDateFilter || '';
+  const activeSearch = state.accountLedgerSearchQuery || '';
+  const isDefaultReset = !activeDate && !activeSearch.trim();
+  const selectedHeadObj = selectedHeadId === 'ALL' ? null : getHead(selectedHeadId);
+
+  const groups = [
+    { key: 'cash_bank', bo: '🏦 ལག་དངུལ་དང་དངུལ་ཁང་།', en: 'Cash & Bank' },
+    { key: 'party_jv', bo: '🤝 མི་སྣ་དང་སྔ་འདོན།', en: 'Party & Advance' },
+    { key: 'income', bo: '🟢 ཡོང་འབབ་རྩིས་འགོ།', en: 'Income Heads' },
+    { key: 'expense', bo: '🔴 འགྲོ་སོང་རྩིས་འགོ།', en: 'Expense Heads' }
+  ];
+
+  return `
+    <!-- Top Ledger Control Card: Account Head Selector + Date + Reset + Word Search -->
+    <div class="report-card no-print" style="background:#EFF6FF;border:1.5px solid #93C5FD;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:4px;">
+        <span style="font-size:14px;font-weight:900;color:#1E3A8A;">
+          📖 ${t('དབྱེ་དེབ། (རྩིས་འགོ་སོ་སོའི་རྩིས་ཁྲ།)', 'Account Ledger (Ledger-Wise Display)')}
+        </span>
+        <span style="font-size:10px;background:#DCFCE7;color:#166534;padding:2px 7px;border-radius:99px;font-weight:800;">
+          📅 ${state.periodFrom} → ${state.periodTo}
+        </span>
+      </div>
+
+      <!-- 1. Select Account Head Dropdown -->
+      <div class="ios-input-group" style="margin-bottom:8px;padding:6px 10px;">
+        <label class="ios-input-label" style="margin-bottom:2px;">
+          🗂️ ${t('དབྱེ་དེབ་རྩིས་འགོ་འདེམས་སྒྲིག', 'Select Ledger Account Head')}
+        </label>
+        <select class="ios-input" style="font-size:13px;font-weight:700;" onchange="selectAccountLedgerHead(this.value)">
+          <option value="ALL" ${selectedHeadId === 'ALL' ? 'selected' : ''}>
+            📚 ${t('རྩིས་འགོ་ཚང་མའི་དབྱེ་དེབ། (ཚང་མ་མཉམ་དུ་གཟིགས།)', 'All Account Ledgers (Ledger-Wise View)')}
+          </option>
+          ${groups
+            .map(g => {
+              const gHeads = state.accountHeads.filter(h => h.group === g.key);
+              return `
+                <optgroup label="${t(g.bo, g.en)}">
+                  ${gHeads
+                    .map(
+                      h => `
+                    <option value="${h.id}" ${selectedHeadId === h.id ? 'selected' : ''}>
+                      ${h.icon} ${t(h.bo, h.en)} [${getHeadGroupShortText(h.group)}]
+                    </option>
+                  `
+                    )
+                    .join('')}
+                </optgroup>
+              `;
+            })
+            .join('')}
+        </select>
+        ${
+          selectedHeadObj
+            ? `<div style="font-size:10.5px;color:#0369A1;font-weight:700;margin-top:3px;">
+                🏷️ ${t('རྩིས་འགོའི་སྡེ་ཚན།', 'Head Group')}: ${getHeadGroupLabel(selectedHeadObj.group)}
+               </div>`
+            : ''
+        }
+      </div>
+
+      <!-- 2. Date Filter + བསྐྱར་སྒྲིག (Reset) Button Row -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+        <span style="font-size:11.5px;font-weight:800;color:#1E3A8A;">
+          📅 ${t('ཚེས་གྲངས་འདེམས་སྒྲིག', 'Filter by Date')}:
+        </span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button
+            type="button"
+            id="accountLedgerResetBtn"
+            class="mini-btn"
+            style="padding:5px 10px;font-weight:800;background:${isDefaultReset ? '#1E3A8A' : '#FFF'};color:${isDefaultReset ? '#FEF08A' : '#1E293B'};border-color:#1E3A8A;"
+            onclick="resetAccountLedgerFilters()"
+          >
+            ${t('བསྐྱར་སྒྲིག', 'Reset')}
+          </button>
+          <input
+            type="date"
+            class="mini-btn"
+            style="padding:4px 8px;font-size:12px;background:${activeDate ? '#FEF3C7' : '#FFF'};border-color:${activeDate ? '#D97706' : '#CBD5E1'};color:#1E293B;"
+            min="${state.periodFrom}"
+            max="${state.periodTo}"
+            value="${activeDate}"
+            onchange="setAccountLedgerDateFilter(this.value)"
+          />
+        </div>
+      </div>
+
+      <!-- 3. Word Search Input inside དབྱེ་དེབ། -->
+      <div class="ios-input-group" style="margin-bottom:0;padding:6px 10px;display:flex;align-items:center;gap:8px;border:1.5px solid #93C5FD;">
+        <span style="font-size:14px;">🔍</span>
+        <input
+          type="text"
+          id="accountLedgerSearchInput"
+          class="ios-input"
+          style="font-size:13px;"
+          placeholder="${t('དབྱེ་དེབ་ནང་ཚིག་འཚོལ་... (མིང་ / རྩིས་འགོ་ / གསལ་བཤད་ / དངུལ་འབོར།)', 'Search word in Ledger (name, head, narration, amount)...')}"
+          value="${activeSearch.replace(/"/g, '&quot;')}"
+          oninput="setAccountLedgerSearchQuery(this.value)"
+        />
+        ${
+          activeSearch
+            ? `<button type="button" class="mini-btn" style="padding:2px 7px;" onclick="resetAccountLedgerFilters()">✕</button>`
+            : ''
+        }
+      </div>
+    </div>
+
+    <!-- Ledger-Wise Cards Container -->
+    <div id="accountLedgerCardsContainer">
+      ${renderAccountLedgerCardsHtml()}
+    </div>
+  `;
+}
+
+function shareReceiptWhatsApp(txId) {
+  const tx = state.transactions.find(x => x.id === txId);
+  if (!tx) return;
+  const book = getActiveBook();
+  const toHead = getHead(tx.drHeadId);
+  const fromHead = getHead(tx.crHeadId);
+  const labels = getVoucherDynamicHeadLabels(tx);
+
+  const drText = `📥 ${labels.drLabelBo} (Dr): ${toHead.bo} (${toHead.en})`;
+  const crText = `📤 ${labels.crLabelBo} (Cr): ${fromHead.bo} (${fromHead.en})`;
+  const headLines = labels.order === 'dr_first' ? `${drText}\n${crText}` : `${crText}\n${drText}`;
+
+  const text = `༄༅། །བོད་ཀྱི་རྩིས་དེབ་འཛིན་ཤོག (${tx.voucherType === 'JV' ? 'མཚུངས་ཁྲ། JV' : tx.voucherType})\n🏛️ ${book.bo} (${book.en})\n🧾 ཨང་།: ${tx.receiptNo} | 📅 ${tx.date}\n${headLines}\n💰 དངུལ་འབོར།: ${formatMoney(tx.amount)}\n🙏 ཐུགས་རྗེ་ཆེ། Thank you!`;
+
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  showToast(t('བྱུང་འཛིན་འཕྲིན་ཐུང་ངོ་བཤུས་བླངས་ཟིན།', 'Voucher copied & opening WhatsApp!'));
+}
+
+// ----------------------------------------------------------------------------
+// TAB 4: ཚོད་བལྟའི་རྩིས་ཤོག (TRIAL BALANCE WITH PERIOD) & ལྷག་ཤོག (BALANCE SHEET)
+// ----------------------------------------------------------------------------
+function renderReportsTab() {
+  const metrics = computeBookMetrics();
+  const tb = computeTrialBalanceAndBS();
+
+  return `
+    <!-- 0. Accounting Period Selector Card (རྩིས་དུས་འདེམས་སྒྲིག) + Apply Button -->
+    <div class="report-card no-print" style="background:#EFF6FF;border:1.5px solid #93C5FD;padding:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
+        <span style="font-size:13px;font-weight:800;color:#1E3A8A;">
+          📅 ${t('ཚོད་བལྟའི་རྩིས་ཤོག་གི་རྩིས་དུས།', 'Accounting Period for Trial Balance')}
+        </span>
+        <span style="font-size:10px;background:#DCFCE7;color:#166534;padding:2px 7px;border-radius:99px;font-weight:800;">
+          💾 ${t('གཏན་འབེབས།', 'Active')}: ${state.periodFrom} → ${state.periodTo}
+        </span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="ios-input-group" style="margin-bottom:0;padding:6px 10px;">
+          <label class="ios-input-label" style="margin-bottom:2px;">${t('འགོ་འཛུགས་ཚེས།', 'Start Date')}</label>
+          <input type="date" id="periodFromInput" class="ios-input" style="font-size:13px;" value="${state.periodFrom}" />
+        </div>
+        <div class="ios-input-group" style="margin-bottom:0;padding:6px 10px;">
+          <label class="ios-input-label" style="margin-bottom:2px;">${t('མཇུག་སྒྲིལ་ཚེས།', 'End Date')}</label>
+          <input type="date" id="periodToInput" class="ios-input" style="font-size:13px;" value="${state.periodTo}" />
+        </div>
+      </div>
+
+      <div id="periodRangeErrorBox" style="display:none;margin-top:8px;padding:7px 10px;border-radius:8px;background:#FEE2E2;border:1.5px solid #EF4444;color:#991B1B;font-size:11.5px;font-weight:700;">
+        ⚠️ ${t(
+          'འགོ་འཛུགས་ཚེས་གྲངས་དེ་མཇུག་སྒྲིལ་ཚེས་གྲངས་ལས་མང་བ་ཡོང་མི་ཆོག',
+          'Start Date cannot be greater than End Date! Please check the dates.'
+        )}
+      </div>
+
+      <div style="margin-top:8px;">
+        <button type="button" class="action-btn" style="width:100%;background:#1E3A8A;color:#FEF08A;padding:9px 12px;font-size:13px;" onclick="applyAccountingPeriodInputs()">
+          ✅ ${t('རྩིས་དུས་གཏན་འབེབས།', 'Apply Accounting Period')}
+        </button>
+      </div>
+
+      <div style="font-size:11px;color:#1E40AF;margin-top:6px;">
+        🔒 ${t('རྩིས་དུས་འདིའི་ཕྱི་ལ་ཚེས་གྲངས་བཀོད་ན་མཉེན་ཆས་ཀྱིས་བཀག་འགོག་དང་བརྟག་དཔྱད་བྱེད་ཀྱི་རེད།', 'Entries outside this selected period are automatically validated & blocked.')}
+      </div>
+    </div>
+
+    <!-- 1. Whole Picture Summary Card (Opening, Closing Cash/Bank, Income, Expense, Party Receivable Dr & Payable Cr) -->
+    <div class="summary-card" style="padding:14px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:13px;font-weight:800;color:#FEF08A;">
+          🏦 ${t('རྩིས་དེབ་ཀྱི་གནས་བབ་ཆ་ཚང་།', 'Complete Financial Picture')}
+        </span>
+        <button class="mini-btn no-print" style="background:rgba(253,224,71,0.2);color:#FDE047;border-color:#FDE047;" onclick="openOpeningBalanceModal()">
+          ✏️ ${t('ཐོག་མའི་ལྷག་མ་བཟོ་བཅོས།', 'Edit Opening')}
+        </button>
+      </div>
+
+      <div class="summary-metrics-grid" style="border-top:none;padding-top:2px;">
+        <div class="metric-box">
+          <div class="metric-title">🏁 ${t('ཐོག་མའི་ལྷག་མ།', 'Opening Cash+Bank')}</div>
+          <div class="metric-val" style="color:#FDE047;">${formatMoney(metrics.openingTotalLiquid)}</div>
+          <div style="font-size:10px;color:#CBD5E1;margin-top:2px;">
+            💵 ${formatMoney(metrics.openingCash)} | 🏦 ${formatMoney(metrics.openingBank)}
+          </div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-title">🏆 ${t('མཐའ་མའི་ལྷག་མ།', 'Closing Cash+Bank')}</div>
+          <div class="metric-val income">${formatMoney(metrics.totalLiquid)}</div>
+          <div style="font-size:10px;color:#CBD5E1;margin-top:2px;">
+            💵 ${formatMoney(metrics.cashBalance)} | 🏦 ${formatMoney(metrics.bankBalance)}
+          </div>
+        </div>
+      </div>
+
+      <div class="summary-metrics-grid" style="margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.22);">
+        <div class="metric-box" style="background:rgba(34,197,94,0.14);border:1px solid rgba(74,222,128,0.35);">
+          <div class="metric-title" style="color:#BBF7D0;">📥 ${t('མི་སྣ་བསྡུ་དགོས་དང་སྔ་འདོན།', 'Total Receivable / Adv')}</div>
+          <div class="metric-val" style="color:#4ADE80;font-size:14.5px;">
+            ${formatMoney(metrics.totalPartyReceivable)} <small style="font-size:10px;">${state.lang === 'en' ? 'Dr' : 'གཡོན།'}</small>
+          </div>
+        </div>
+        <div class="metric-box" style="background:rgba(244,63,94,0.16);border:1px solid rgba(251,113,133,0.35);">
+          <div class="metric-title" style="color:#FECDD3;">📤 ${t('མི་སྣ་སྤྲོད་དགོས་བུ་ལོན།', 'Total Payable / Due')}</div>
+          <div class="metric-val" style="color:#FDA4AF;font-size:14.5px;">
+            ${formatMoney(metrics.totalPartyPayable)} <small style="font-size:10px;">${state.lang === 'en' ? 'Cr' : 'གཡས།'}</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. ཚོད་བལྟའི་རྩིས་ཤོག (TRIAL BALANCE: Opening, Dr, Cr, Closing) -->
+    <div class="report-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+        <div>
+          <div style="font-size:15.5px;font-weight:800;color:#4C0519;">
+            ⚖️ ${t('ཚོད་བལྟའི་རྩིས་ཤོག', 'Trial Balance (Opening & Closing)')}
+          </div>
+          <div style="font-size:11px;color:#6C6C70;font-weight:600;">
+            📅 ${t('རྩིས་དུས།', 'Period')}: ${state.periodFrom} → ${state.periodTo}
+          </div>
+        </div>
+      </div>
+
+      <div class="quick-entry-row no-print" style="margin-bottom:10px;">
+        <button class="action-btn" style="background:#0F172A;color:#FDE047;font-size:11.5px;" onclick="exportBilingualCSV()">
+          📥 ${t('རྩིས་ཐོ་ཕྱིར་འདྲེན།', 'Export CSV')}
+        </button>
+        <button class="action-btn" style="background:#E2E8F0;color:#1E293B;font-size:11.5px;" onclick="window.print()">
+          🖨️ ${t('ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག་པར་འདེབས།', 'Print Trial & BS')}
+        </button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table class="fin-table">
+          <thead>
+            <tr>
+              <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
+              <th style="text-align:right;">${t('ཐོག་མ།', 'Opening')}</th>
+              <th style="text-align:right;">${t('གཡོན་རྩིས།/སོང་།', 'Debit Dr')}</th>
+              <th style="text-align:right;">${t('གཡས་རྩིས།/བྱུང་།', 'Credit Cr')}</th>
+              <th style="text-align:right;">${t('མཐའ་མ།', 'Closing')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tb.rows
+              .map(r => {
+                const openSideLabel =
+                  r.openNet > 0
+                    ? state.lang === 'en'
+                      ? 'Dr'
+                      : 'གཡོན།'
+                    : state.lang === 'en'
+                    ? 'Cr'
+                    : 'གཡས།';
+                const closeSideLabel =
+                  r.closeNet > 0
+                    ? state.lang === 'en'
+                      ? 'Dr'
+                      : 'གཡོན།'
+                    : state.lang === 'en'
+                    ? 'Cr'
+                    : 'གཡས།';
+                const openStr =
+                  r.openNet === 0
+                    ? '—'
+                    : `${formatMoney(Math.abs(r.openNet))} <small>${openSideLabel}</small>`;
+                const closeStr =
+                  r.closeNet === 0
+                    ? '0'
+                    : `${formatMoney(Math.abs(r.closeNet))} <small style="color:${
+                        r.closeNet > 0 ? '#15803D' : '#B91C1C'
+                      };">${closeSideLabel}</small>`;
+                return `
+                <tr>
+                  <td style="font-weight:700;">
+                    ${r.head.icon} ${t(r.head.bo, r.head.en)}
+                    <div style="font-size:9.5px;color:#6C6C70;">[${getHeadGroupShortText(r.head.group)}]</div>
+                  </td>
+                  <td style="text-align:right;color:#0369A1;font-weight:600;">${openStr}</td>
+                  <td style="text-align:right;color:#15803D;font-weight:600;">
+                    ${r.dr > 0 ? formatMoney(r.dr) : '—'}
+                  </td>
+                  <td style="text-align:right;color:#B91C1C;font-weight:600;">
+                    ${r.cr > 0 ? formatMoney(r.cr) : '—'}
+                  </td>
+                  <td style="text-align:right;font-weight:800;">${closeStr}</td>
+                </tr>
+              `;
+              })
+              .join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:#FEF3C7;font-weight:900;color:#4C0519;">
+              <td>${t('ཁྱོན་བསྡོམས། (གཡོན། = གཡས།)', 'Total (Dr = Cr)')}</td>
+              <td style="text-align:right;">${formatMoney(tb.totalOpenDr)} <small>${state.lang === 'en' ? 'Dr=Cr' : 'གཡོན།=གཡས།'}</small></td>
+              <td style="text-align:right;">${formatMoney(tb.totalPeriodDr)}</td>
+              <td style="text-align:right;">${formatMoney(tb.totalPeriodCr)}</td>
+              <td style="text-align:right;">${formatMoney(tb.totalClosingDr)} <small>${state.lang === 'en' ? 'Dr=Cr' : 'གཡོན།=གཡས།'}</small></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- 3. ལྷག་ཤོག / མ་རྩ་ཁུངས་བསྐྱེལ་རྩིས་ཤོག (INTELLIGENT BALANCE SHEET AT THE BOTTOM) -->
+    <div class="report-card" style="border:2px solid #881337;background:#FFFDF9;">
+      <div style="text-align:center;border-bottom:1.5px dashed #D97706;padding-bottom:8px;margin-bottom:10px;">
+        <div style="font-size:16px;font-weight:900;color:#4C0519;">
+          🏛️ ${t('ལྷག་ཤོག • མ་རྩ་ཁུངས་བསྐྱེལ་རྩིས་ཤོག', 'BALANCE SHEET')}
+        </div>
+        <div style="font-size:11px;color:#78350F;font-weight:600;">
+          ${t(getActiveBook().bo, getActiveBook().en)} (${state.periodFrom} → ${state.periodTo})
+        </div>
+      </div>
+
+      <!-- SIDE 1: ASSETS -->
+      <div class="bs-side-box" style="background:#F0FDF4;border-color:#86EFAC;">
+        <div class="bs-side-header" style="color:#166534;border-color:#86EFAC;">
+          <span>🟢 ${t('རྒྱུ་དངོས་དང་བསྡུ་དགོས་སྔ་འདོན་ཁག', 'Assets (Cash, Bank, Receivables & Advances)')}</span>
+          <span>${t('དངུལ་འབོར།', 'Amount')}</span>
+        </div>
+
+        <div style="font-size:11px;font-weight:800;color:#15803D;margin:4px 0 2px;">
+          🏦 ${t('༡། ལག་དངུལ་དང་དངུལ་ཁང་།', '1. Cash & Bank Balances')}
+        </div>
+        ${tb.bsCashBankAssets
+          .map(
+            a => `
+          <div class="bs-row">
+            <span>${a.head.icon} ${t(a.head.bo, a.head.en)}</span>
+            <strong style="color:#14532D;">${formatMoney(a.amount)}</strong>
+          </div>
+        `
+          )
+          .join('')}
+
+        <div style="font-size:11px;font-weight:800;color:#15803D;margin:8px 0 2px;">
+          🤝 ${t('༢། མི་སྣ་བསྡུ་དགོས་དང་སྔ་འདོན་ཁག', '2. Party Receivables & Advances (Closing Dr)')}
+        </div>
+        ${
+          tb.bsPartyAndAdvanceAssets.length === 0
+            ? `<div style="font-size:11px;color:#6C6C70;padding:3px 0;">—</div>`
+            : tb.bsPartyAndAdvanceAssets
+                .map(
+                  a => `
+              <div class="bs-row">
+                <span>${a.head.icon} ${t(a.head.bo, a.head.en)} <small style="color:#15803D;">(${t('བསྡུ་དགོས་/སྔ་འདོན།', 'Receivable Dr')})</small></span>
+                <strong style="color:#14532D;">${formatMoney(a.amount)}</strong>
+              </div>
+            `
+                )
+                .join('')
+        }
+
+        <div class="bs-total-row" style="background:#DCFCE7;color:#14532D;">
+          <span>${t('རྒྱུ་དངོས་ཁྱོན་བསྡོམས།', 'Total Assets')}</span>
+          <span>${formatMoney(tb.totalAssetsValue)}</span>
+        </div>
+      </div>
+
+      <!-- SIDE 2: CAPITAL FUND & LIABILITIES -->
+      <div class="bs-side-box" style="background:#FFF1F2;border-color:#FDA4AF;margin-bottom:6px;">
+        <div class="bs-side-header" style="color:#9F1239;border-color:#FDA4AF;">
+          <span>🟣 ${t('མ་རྩ་དང་སྤྲོད་དགོས་བུ་ལོན་ཁག', 'Capital Fund, Surplus & Party Liabilities')}</span>
+          <span>${t('དངུལ་འབོར།', 'Amount')}</span>
+        </div>
+
+        <div style="font-size:11px;font-weight:800;color:#9F1239;margin:4px 0 2px;">
+          🏛️ ${t('༡། མ་རྩ་དང་ཁེ་བཟང་།', '1. Capital Fund & Surplus')}
+        </div>
+        <div class="bs-row">
+          <span>${t('ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།', 'Opening Capital / General Fund')}</span>
+          <strong>${formatMoney(tb.openingCapitalFund)}</strong>
+        </div>
+
+        <div class="bs-row">
+          <span>${t('དུས་ཡུན་ནང་གི་ཁེ་བཟང་ངམ་ལྷག་མ།', 'Add: Net Surplus (Income - Expense)')}</span>
+          <strong style="color:${tb.netSurplus >= 0 ? '#15803D' : '#B91C1C'};">
+            ${tb.netSurplus >= 0 ? '+' : ''}${formatMoney(tb.netSurplus)}
+          </strong>
+        </div>
+
+        <div class="bs-row" style="background:rgba(136,19,55,0.06);padding:4px 6px;border-radius:6px;">
+          <span><strong>🟰 ${t('མཐའ་མའི་མ་དངུལ་བསྡོམས།', 'Closing Capital Fund')}</strong></span>
+          <strong>${formatMoney(tb.closingCapitalFund)}</strong>
+        </div>
+
+        <div style="font-size:11px;font-weight:800;color:#9F1239;margin:8px 0 2px;">
+          🏭 ${t('༢། མི་སྣ་སྤྲོད་དགོས་བུ་ལོན་དང་གཡར་དངུལ་ཁག', '2. Party Payables & Borrowings (Closing Cr)')}
+        </div>
+        ${
+          tb.bsPartyAndLoanLiabilities.length === 0
+            ? `<div style="font-size:11px;color:#6C6C70;padding:3px 0;">—</div>`
+            : tb.bsPartyAndLoanLiabilities
+                .map(
+                  l => `
+              <div class="bs-row">
+                <span>${l.head.icon} ${t(l.head.bo, l.head.en)} <small style="color:#9F1239;">(${t('སྤྲོད་དགོས་བུ་ལོན།', 'Payable Cr')})</small></span>
+                <strong style="color:#881337;">${formatMoney(l.amount)}</strong>
+              </div>
+            `
+                )
+                .join('')
+        }
+
+        <div class="bs-total-row" style="background:#FFE4E6;color:#881337;">
+          <span>${t('མ་རྩ་དང་བུ་ལོན་ཁྱོན་བསྡོམས།', 'Total Capital & Liabilities')}</span>
+          <span>${formatMoney(tb.totalLiabilitiesAndCapital)}</span>
+        </div>
+      </div>
+
+      <div style="text-align:center;font-size:11.5px;font-weight:800;color:#15803D;padding-top:4px;">
+        ✅ ${t('ལྷག་ཤོག་གི་རྒྱུ་དངོས་དང་མ་རྩ་བུ་ལོན་གཉིས་ཆ་སྙོམས་ཟིན་པ།', 'Balance Sheet Matched (Assets = Capital + Liabilities)')}
+      </div>
+    </div>
+
+    <!-- 4. Phone-to-Phone Backup Transfer & Cloud Sync Card -->
+    <div class="report-card no-print" style="background:#F0F9FF;border:1.5px solid #38BDF8;">
+      <div style="font-size:14.5px;font-weight:800;color:#0369A1;margin-bottom:4px;">
+        ☁️ ${t('ཁ་པར་གཞན་ནང་རྩིས་དེབ་སྤོ་བཤུགས་དང་སྤྲིན་གསོག་མཉམ་སྤྱོད།', 'Transfer Data to Another Phone & Cloud Sync')}
+      </div>
+      <div style="font-size:12px;color:#334155;margin-bottom:10px;">
+        ${t(
+          'ཁྱེད་ཀྱི་རྩིས་དེབ་དང་། རྩིས་འགོ། རྩིས་ཐོ་ཡོངས་རྫོགས་ཕྱིར་འདྲེན་བྱས་ནས་ཁ་པར་གཞན་ནང་ནང་འདྲེན་བྱེད་ཐུབ།',
+          'Export all Account Books, Heads & Entries to install on another phone, or connect Cloud Sync.'
+        )}
+      </div>
+      <button class="action-btn contra-btn" style="width:100%;padding:11px;" onclick="openBackupAndCloudModal()">
+        📲 ${t('རྩིས་དེབ་སྤོ་བཤུགས་དང་སྤྲིན་གསོག་སྒྲིག་འགོད།', 'Open Phone Transfer & Cloud Sync')}
+      </button>
+    </div>
+
+    <!-- 5. 100% Free Community App + Share with Friends Card (Apple Compliant) -->
+    <div class="report-card no-print" style="background:linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%);border:1.5px solid #CBD5E1;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:15px;font-weight:800;color:#0F172A;">
+          🤝 ${t('བོད་མིའི་སྤྱི་ཕན་རིན་མེད་མཉེན་ཆས།', '100% Free Community App')}
+        </div>
+        <span style="background:#DCFCE7;color:#15803D;font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px;">
+          ${t('༡༠༠% རིན་མེད།', '100% FREE')}
+        </span>
+      </div>
+
+      <div style="font-size:12.5px;color:#475569;line-height:1.55;margin-bottom:12px;">
+        ${t(
+          'མཉེན་ཆས་འདིའི་ནང་གི་ཁྱད་ཆོས་ཡོངས་རྫོགས་བོད་མིའི་སྤྱི་ཚོགས་དང་ཚོང་ལས། དགོན་སྡེ་ཁག་ལ་ ༡༠༠% རིན་མེད་ཐོག་ཕུལ་བ་ཡིན། གལ་ཏེ་མཉེན་ཆས་འདིས་ཕན་ཐོགས་བྱུང་ན་གྲོགས་པོ་དང་སྤྱི་ཚོགས་ལ་མཉམ་སྤྱོད་གནང་རོགས།',
+          'All features in Tibetan Account Book are 100% free forever for our community, shops, and monasteries. If this app helps your organization, please share it with friends!'
+        )}
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button class="action-btn" style="flex:1;background:linear-gradient(135deg,#0F172A,#1E293B);color:#FFFFFF;padding:12px;" onclick="shareAppToOthers()">
+          📤 ${t('མཉེན་ཆས་མཉམ་སྤྱོད།', 'Share App with Friends')}
+        </button>
+        <button class="mini-btn" style="background:#25D366;color:#FFF;border:none;padding:12px 14px;font-weight:800;font-size:12px;" onclick="shareAppViaWhatsApp()" title="WhatsApp">
+          💬 WhatsApp
+        </button>
+      </div>
+    </div>
+
+    <!-- Privacy Policy & App Version Link (Google Play & Apple Compliant) -->
+    <div style="text-align:center;margin-top:14px;margin-bottom:6px;">
+      <a href="privacy.html" target="_blank" style="font-size:12px;color:#64748B;text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+        🔒 ${t('གསང་རྒྱའི་སྲིད་ཇུས། (Privacy Policy)', 'Privacy Policy')}
+      </a>
+      <div style="font-size:10.5px;color:#94A3B8;margin-top:3px;">
+        Tibetan Account Book • བོད་ཀྱི་རྩིས་དེབ། v7.0
+      </div>
+    </div>
+  `;
+}
+
+function applyAccountingPeriodInputs() {
+  const fromEl = document.getElementById('periodFromInput');
+  const toEl = document.getElementById('periodToInput');
+  const fromDate = fromEl ? fromEl.value : state.periodFrom;
+  const toDate = toEl ? toEl.value : state.periodTo;
+  updateAccountingPeriod(fromDate, toDate);
+}
+
+function updateAccountingPeriod(fromDate, toDate) {
+  if (!fromDate || !toDate) {
+    showToast(t('འགོ་འཛུགས་ཚེས་དང་མཇུག་སྒྲིལ་ཚེས་གཉིས་ཀ་འདེམས་རོགས།', 'Please select both Start Date and End Date'));
+    return;
+  }
+  const errBox = document.getElementById('periodRangeErrorBox');
+  if (fromDate > toDate) {
+    if (errBox) errBox.style.display = 'block';
+    showToast(
+      t(
+        '⚠️ འགོ་འཛུགས་ཚེས་གྲངས་དེ་མཇུག་སྒྲིལ་ཚེས་གྲངས་ལས་མང་བ་ཡོང་མི་ཆོག',
+        '⚠️ Start Date cannot be more than End Date!'
+      )
+    );
+    return;
+  }
+  if (errBox) errBox.style.display = 'none';
+  state.periodFrom = fromDate;
+  state.periodTo = toDate;
+  saveState();
+  renderAll();
+  showToast(
+    t(
+      `✅ རྩིས་དུས་ (${fromDate} → ${toDate}) གཏན་འབེབས་དང་ཉར་ཚགས་ཟིན།`,
+      `✅ Accounting Period applied & saved: ${fromDate} → ${toDate}`
+    )
+  );
+}
+
+function exportBilingualCSV() {
+  const txs = getBookTransactions();
+  const rows = [
+    [
+      'Voucher No',
+      'Date',
+      'Voucher Type',
+      'From Head (རྩིས་འགོ་གང་ནས། Cr) Tibetan',
+      'From Head (Cr) English',
+      'To Head (རྩིས་འགོ་ལ་བཏང་། Dr) Tibetan',
+      'To Head (Dr) English',
+      'Note (Tibetan)',
+      'Note (English)',
+      'Amount',
+      'Currency'
+    ]
+  ];
+
+  txs.forEach(tx => {
+    const toHead = getHead(tx.drHeadId);
+    const fromHead = getHead(tx.crHeadId);
+    rows.push([
+      tx.receiptNo || '',
+      tx.date,
+      tx.voucherType === 'JV' ? 'མཚུངས་ཁྲ། (JV)' : tx.voucherType,
+      fromHead.bo,
+      fromHead.en,
+      toHead.bo,
+      toHead.en,
+      `"${(tx.noteBo || '').replace(/"/g, '""')}"`,
+      `"${(tx.noteEn || '').replace(/"/g, '""')}"`,
+      tx.amount,
+      state.currency
+    ]);
+  });
+
+  const csvContent = '\uFEFF' + rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Tibetan_Account_Book_Report_${state.activeBookId}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(t('བོད་ཨིན་ Excel/CSV ཕབ་ལེན་ཟིན་པ།', 'Double-Entry Excel/CSV downloaded!'));
+}
+
+// ============================================================================
+// Official Cash Book Statement & Asset Flow PDF Export (རྩིས་དེབ་ཁྲ་མ་ PDF ཕྱིར་འདྲེན།)
+// ============================================================================
+
+function computeCashBookPdfData() {
+  const book = getActiveBook();
+  const tb = computeTrialBalanceAndBS();
+  const metrics = computeBookMetrics();
+
+  const now = new Date();
+  const exportDateTimeStr =
+    now.getFullYear() +
+    '-' +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(now.getDate()).padStart(2, '0') +
+    ' ' +
+    String(now.getHours()).padStart(2, '0') +
+    ':' +
+    String(now.getMinutes()).padStart(2, '0') +
+    ':' +
+    String(now.getSeconds()).padStart(2, '0');
+
+  // 1. All ledger opening balances under heading
+  const allOpenRows = [];
+  state.accountHeads.forEach(h => {
+    const r = tb.rows.find(x => x.head.id === h.id);
+    const openNet = r ? r.openNet : getHeadOpeningBalance(h.id);
+    if (openNet !== 0) {
+      allOpenRows.push({
+        head: h,
+        openNet,
+        isDr: openNet > 0,
+        drAmt: openNet > 0 ? openNet : 0,
+        crAmt: openNet < 0 ? Math.abs(openNet) : 0
+      });
+    }
+  });
+
+  if (tb.openingCapitalFund !== 0) {
+    allOpenRows.unshift({
+      head: {
+        id: 'capital_fund',
+        group: 'capital_fund',
+        icon: '🏛️',
+        bo: 'ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ།',
+        en: 'Capital / General Fund'
+      },
+      openNet: -tb.openingCapitalFund,
+      isDr: tb.openingCapitalFund < 0,
+      drAmt: tb.openingCapitalFund < 0 ? Math.abs(tb.openingCapitalFund) : 0,
+      crAmt: tb.openingCapitalFund > 0 ? tb.openingCapitalFund : 0
+    });
+  }
+
+  // 2. Asset side opening bifurcation
+  const openCashBankAssets = [];
+  const openPartyAssets = [];
+  const openOtherAssets = [];
+
+  state.accountHeads.forEach(h => {
+    const r = tb.rows.find(x => x.head.id === h.id);
+    const openNet = r ? r.openNet : getHeadOpeningBalance(h.id);
+    if (openNet > 0) {
+      if (h.group === 'cash_bank') {
+        openCashBankAssets.push({ head: h, amount: openNet });
+      } else if (h.group === 'party_jv') {
+        openPartyAssets.push({ head: h, amount: openNet });
+      } else {
+        openOtherAssets.push({ head: h, amount: openNet });
+      }
+    }
+  });
+
+  const totalCashBankOpen = openCashBankAssets.reduce((s, a) => s + a.amount, 0);
+  const totalPartyAssetOpen = openPartyAssets.reduce((s, a) => s + a.amount, 0);
+  const totalOtherAssetOpen = openOtherAssets.reduce((s, a) => s + a.amount, 0);
+  const negativeGeneralFund = tb.openingCapitalFund < 0 ? Math.abs(tb.openingCapitalFund) : 0;
+  const totalAssetOpening =
+    totalCashBankOpen + totalPartyAssetOpen + totalOtherAssetOpen + negativeGeneralFund;
+
+  // 3. Transactions & Running Balance (Bank-Statement Style)
+  const periodTxs = getBookTransactions()
+    .filter(tx => tx.date >= state.periodFrom && tx.date <= state.periodTo)
+    .slice()
+    .sort(
+      (a, b) =>
+        (a.date || '').localeCompare(b.date || '') ||
+        (a.receiptNo || '').localeCompare(b.receiptNo || '')
+    );
+
+  let runningBal = totalAssetOpening;
+  let totalReceipts = 0;
+  let totalPayments = 0;
+
+  const statementRows = periodTxs.map(tx => {
+    const toHead = getHead(tx.drHeadId);
+    const fromHead = getHead(tx.crHeadId);
+    const primaryHead = getHead(tx.primaryHeadId);
+    const amt = Number(tx.amount) || 0;
+
+    let inAmt = 0;
+    let outAmt = 0;
+
+    if (tx.voucherType === 'RECEIPT') {
+      inAmt = amt;
+      totalReceipts += amt;
+      runningBal += amt;
+    } else if (tx.voucherType === 'PAYMENT') {
+      outAmt = amt;
+      totalPayments += amt;
+      runningBal -= amt;
+    } else if (tx.voucherType === 'CONTRA') {
+      // Internal transfer between Cash & Bank
+    } else if (tx.voucherType === 'JV') {
+      // Non-cash adjustment
+    }
+
+    // Account involved (Cash or Bank)
+    let accountName = '—';
+    if (toHead && toHead.group === 'cash_bank' && fromHead && fromHead.group === 'cash_bank') {
+      accountName = `${fromHead.icon} ${t(fromHead.bo, fromHead.en)} → ${toHead.icon} ${t(toHead.bo, toHead.en)}`;
+    } else if (toHead && toHead.group === 'cash_bank') {
+      accountName = `${toHead.icon} ${t(toHead.bo, toHead.en)}`;
+    } else if (fromHead && fromHead.group === 'cash_bank') {
+      accountName = `${fromHead.icon} ${t(fromHead.bo, fromHead.en)}`;
+    }
+
+    return {
+      tx,
+      toHead,
+      fromHead,
+      primaryHead,
+      accountName,
+      inAmt,
+      outAmt,
+      runningBal
+    };
+  });
+
+  // 4. Closing Asset Detailed Bifurcation
+  const closingCashAssets = tb.bsCashBankAssets.filter(b => b.head.id === 'head_cash');
+  const closingBankAssets = tb.bsCashBankAssets.filter(b => b.head.id !== 'head_cash');
+  const closingPartyAssets = tb.bsPartyAndAdvanceAssets;
+  const totalClosingAssets = tb.totalAssetsValue;
+
+  // Split closing party assets into:
+  // a) Parties included in initial opening asset calculation
+  // b) New advances given during this period
+  const initialAssetPartyIds = new Set(openPartyAssets.map(p => p.head.id));
+  const initialClosingParties = closingPartyAssets.filter(p => initialAssetPartyIds.has(p.head.id));
+  const initialClosingPartyTotal = initialClosingParties.reduce((s, p) => s + p.amount, 0);
+
+  const newClosingParties = closingPartyAssets.filter(p => !initialAssetPartyIds.has(p.head.id));
+  const newClosingPartyTotal = newClosingParties.reduce((s, p) => s + p.amount, 0);
+
+  // Dynamic Party Reconciliation to bridge Table Running Balance (e.g. ₹73,100)
+  // to Balance Sheet Closing Assets (e.g. ₹70,100) and Physical Cash & Bank (e.g. ₹64,600)
+  const clearedOldParties = [];
+  let totalClearedOldPartyAmt = 0;
+
+  const newAdvancesParties = [];
+  let totalNewAdvancesAmt = 0;
+
+  const flippedLiabilityParties = [];
+  let totalFlippedLiabilityAmt = 0;
+
+  state.accountHeads
+    .filter(h => h.group === 'party_jv')
+    .forEach(h => {
+      const r = tb.rows.find(x => x.head.id === h.id);
+      const openNet = r ? r.openNet : getHeadOpeningBalance(h.id);
+      const closeNet = r ? r.closeNet : openNet;
+
+      if (openNet > 0) {
+        // Party was an opening asset receivable
+        if (closeNet >= 0) {
+          const cleared = openNet - closeNet;
+          if (cleared > 0) {
+            clearedOldParties.push({ head: h, amount: cleared, openNet, closeNet });
+            totalClearedOldPartyAmt += cleared;
+          } else if (cleared < 0) {
+            const additionalAdv = Math.abs(cleared);
+            newAdvancesParties.push({ head: h, amount: additionalAdv, openNet, closeNet });
+            totalNewAdvancesAmt += additionalAdv;
+          }
+        } else {
+          // closeNet < 0: completely cleared the opening asset, AND flipped into liability
+          clearedOldParties.push({ head: h, amount: openNet, openNet, closeNet: 0 });
+          totalClearedOldPartyAmt += openNet;
+
+          const flipped = Math.abs(closeNet);
+          flippedLiabilityParties.push({ head: h, amount: flipped, openNet, closeNet });
+          totalFlippedLiabilityAmt += flipped;
+        }
+      } else {
+        // Party had zero or credit opening balance
+        if (closeNet > 0) {
+          // Now has debit balance -> new advance given!
+          newAdvancesParties.push({ head: h, amount: closeNet, openNet, closeNet });
+          totalNewAdvancesAmt += closeNet;
+        }
+      }
+    });
+
+  // Reconciled Total Balance Sheet Assets:
+  // Running Balance - Cleared Old Receivables + New Advances Given - (Negative General Fund if any)
+  const reconciledAssetsFromTable =
+    runningBal - totalClearedOldPartyAmt + totalNewAdvancesAmt - negativeGeneralFund;
+
+  // Direct calculation of physical Cash & Bank from table running balance:
+  // Running Balance - Total Non-Cash Opening Assets (Parties + Other + Neg GF)
+  const nonCashOpeningTotal = totalPartyAssetOpen + totalOtherAssetOpen + negativeGeneralFund;
+  const reconciledCashBankFromTable = runningBal - nonCashOpeningTotal;
+
+  return {
+    book,
+    exportDateTimeStr,
+    periodFrom: state.periodFrom,
+    periodTo: state.periodTo,
+    allOpenRows,
+    totalOpenDr: tb.totalOpenDr,
+    totalOpenCr: tb.totalOpenCr,
+    openAssetBifurcation: {
+      cashBank: openCashBankAssets,
+      totalCashBankOpen,
+      parties: openPartyAssets,
+      totalPartyAssetOpen,
+      other: openOtherAssets,
+      totalOtherAssetOpen,
+      negativeGeneralFund,
+      totalAssetOpening
+    },
+    statementRows,
+    totalReceipts,
+    totalPayments,
+    finalRunningBal: runningBal,
+    closingAssetBifurcation: {
+      cashBalance: metrics.cashBalance,
+      closingBankAssets,
+      totalCashBankClose: tb.totalCashBankAssets,
+      initialClosingParties,
+      initialClosingPartyTotal,
+      newClosingParties,
+      newClosingPartyTotal,
+      parties: closingPartyAssets,
+      totalPartyClose: tb.totalPartyAssets,
+      totalClosingAssets,
+      clearedOldParties,
+      totalClearedOldPartyAmt,
+      newAdvancesParties,
+      totalNewAdvancesAmt,
+      flippedLiabilityParties,
+      totalFlippedLiabilityAmt,
+      reconciledAssetsFromTable,
+      nonCashOpeningTotal,
+      reconciledCashBankFromTable
+    }
+  };
+}
+
+function renderCashBookPdfStatementHtml() {
+  const data = computeCashBookPdfData();
+  const book = data.book;
+
+  return `
+    <!-- Top Action Bar (Hidden when printing/saving PDF) -->
+    <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
+      <div style="font-size:14.5px;font-weight:900;color:#0F172A;display:flex;align-items:center;gap:6px;">
+        <span>📖 ${t('ལག་དངུལ་དང་དངུལ་ཁང་གི་རྩིས་དེབ་ཁྲ་མ། (PDF)', 'Cash Book Statement (PDF)')}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <button
+          type="button"
+          class="action-btn"
+          style="background:#0F172A;color:#FDE047;padding:6px 14px;font-size:12px;font-weight:800;"
+          onclick="window.print()"
+        >
+          🖨️ ${t('PDF / པར་འདེབས།', 'Print / Save PDF')}
+        </button>
+        <button
+          type="button"
+          class="mini-btn"
+          style="background:#EFF6FF;color:#1E3A8A;border-color:#93C5FD;padding:6px 10px;font-size:11.5px;font-weight:700;"
+          onclick="printCashBookPdfStandalone()"
+          title="${t('ཤོག་ངོས་གསར་པར་འབྱེད་ནས་པར་འདེབས།', 'Open in standalone window')}"
+        >
+          🗗 ${t('ཤོག་ངོས་གསར་པ།', 'Standalone Window')}
+        </button>
+        <button
+          type="button"
+          class="mini-btn"
+          style="background:#F1F5F9;color:#334155;border-color:#CBD5E1;padding:6px 10px;font-size:11.5px;font-weight:700;"
+          onclick="copyCashBookStatementText()"
+        >
+          📋 ${t('ངོ་བཤུས།', 'Copy Text')}
+        </button>
+        <button
+          type="button"
+          class="mini-btn"
+          style="padding:6px 10px;font-size:12px;"
+          onclick="closeModal()"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+
+    <!-- Official Printable Cash Book Statement Paper Document -->
+    <div class="cashbook-statement-paper" id="printableCashBookStatement">
+      <!-- 1. Document Header Box with Export Date and Time -->
+      <div class="statement-header-box" style="padding-top:14px;">
+        <div class="statement-yiggo" style="padding-top:12px;line-height:2.1;display:block;">༄༅། །བོད་ཀྱི་རྩིས་དེབ། • Tibetan Account Book</div>
+        <div class="statement-title-main" style="line-height:1.7;padding-top:4px;">
+          ${t('ལག་དངུལ་དང་དངུལ་ཁང་གི་རྩིས་དེབ་ཁྲ་མ།', 'OFFICIAL CASH & BANK STATEMENT')}
+        </div>
+        <div class="statement-title-sub" style="line-height:1.6;padding-top:3px;">
+          ${t('མ་དངུལ་དང་རྒྱུ་དངོས་འགྲོ་འོང་གི་གསལ་བཤད་རྩིས་ཁྲ།', 'Comprehensive Cashbook & Asset Flow Statement')}
+        </div>
+        <div style="font-size:15px;font-weight:800;color:#881337;margin-top:6px;line-height:1.7;padding-top:4px;">
+          ${book.bo} <span style="font-size:12.5px;color:#475569;font-weight:600;">(${book.en})</span>
+        </div>
+
+        <div class="statement-meta-row">
+          <div>
+            📅 <strong>${t('རྩིས་དུས།', 'Period')}:</strong> ${data.periodFrom} → ${data.periodTo}
+          </div>
+          <div style="color:#0369A1;">
+            🕒 <strong>${t('ཕྱིར་འདྲེན་ཚེས་གྲངས་དང་དུས་ཚོད།', 'Export Date & Time')}:</strong>
+            <span>${data.exportDateTimeStr}</span>
+          </div>
+          <div>
+            💱 <strong>${t('དངུལ་ལོར།', 'Currency')}:</strong> ${state.currency}
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Opening Balances of All Ledgers under the Heading -->
+      <div class="bifurcation-card" style="border-color:#93C5FD;background:#F0F9FF;">
+        <div class="bifurcation-title" style="color:#1E3A8A;">
+          <span>📚 ${t('རྩིས་འགོ་ཚང་མའི་ཐོག་མའི་ལྷག་མའི་ཐོ་གཞུང་།', 'Opening Balances of All Ledgers')}</span>
+          <span style="font-size:10px;background:#DBEAFE;color:#1E40AF;padding:2px 8px;border-radius:99px;">
+            ${t('རྩིས་འགོ་ཁག', 'All Heads')}
+          </span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="fin-table" style="font-size:11px;margin-bottom:4px;">
+            <thead>
+              <tr style="background:#E0F2FE;">
+                <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
+                <th style="text-align:left;">${t('སྡེ་ཚན།', 'Group')}</th>
+                <th style="text-align:right;">${t('གཡོན་རྩིས། (Dr)', 'Debit (Dr)')}</th>
+                <th style="text-align:right;">${t('གཡས་རྩིས། (Cr)', 'Credit (Cr)')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                data.allOpenRows.length === 0
+                  ? `<tr><td colspan="4" style="text-align:center;color:#6C6C70;">${t('ཐོག་མའི་ལྷག་མ་གང་ཡང་མི་འདུག', 'No opening balances recorded.')}</td></tr>`
+                  : data.allOpenRows
+                      .map(r => `
+                    <tr>
+                      <td style="font-weight:700;">${r.head.icon} ${t(r.head.bo, r.head.en)}</td>
+                      <td style="font-size:10px;color:#64748B;">${getHeadGroupLabel(r.head.group)}</td>
+                      <td style="text-align:right;color:#15803D;font-weight:700;">
+                        ${r.drAmt > 0 ? formatMoney(r.drAmt) : '—'}
+                      </td>
+                      <td style="text-align:right;color:#B91C1C;font-weight:700;">
+                        ${r.crAmt > 0 ? formatMoney(r.crAmt) : '—'}
+                      </td>
+                    </tr>
+                  `)
+                      .join('')
+              }
+            </tbody>
+            <tfoot>
+              <tr style="background:#BAE6FD;font-weight:900;color:#0C4A6E;">
+                <td colspan="2">${t('ཁྱོན་བསྡོམས་ཐོག་མའི་རྩིས་འགྲིག', 'Total Opening Balance Tally')}</td>
+                <td style="text-align:right;color:#15803D;">${formatMoney(data.totalOpenDr)}</td>
+                <td style="text-align:right;color:#B91C1C;">${formatMoney(data.totalOpenCr)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- 3. Asset-Side Opening Balance Summary & Detail Bifurcation -->
+      <div class="bifurcation-card" style="border-color:#F59E0B;background:#FFFBEB;">
+        <div class="bifurcation-title" style="color:#B45309;">
+          <span>🏦 ${t('ཐོག་མའི་རྒྱུ་དངོས་ལྷག་མའི་ཁྱོན་བསྡོམས་དང་དབྱེ་ཞིབ།', 'Asset Opening Balance & Detail Bifurcation')}</span>
+          <span style="font-size:10.5px;color:#78350F;font-weight:700;">
+            ${t('རྒྱུ་དངོས་དབྱེ་ཞིབ།', 'Asset Breakdown')}
+          </span>
+        </div>
+
+        <!-- 3a. Cash & Bank Bifurcation -->
+        <div style="font-size:11.5px;font-weight:800;color:#1E3A8A;margin-top:4px;margin-bottom:2px;">
+          💵 ${t('ལག་དངུལ་དང་དངུལ་ཁང་། (Cash & Bank Opening):', 'Cash & Bank Opening:')}
+        </div>
+        ${
+          data.openAssetBifurcation.cashBank.length === 0
+            ? `<div class="bifurcation-row" style="color:#94A3B8;">— ${t('ལག་དངུལ་དང་དངུལ་ཁང་ཐོག་མའི་ལྷག་མ་མེད།', 'None')}</div>`
+            : data.openAssetBifurcation.cashBank
+                .map(
+                  cb => `
+              <div class="bifurcation-row">
+                <span>${cb.head.icon} ${t(cb.head.bo, cb.head.en)}</span>
+                <strong style="color:#15803D;">${formatMoney(cb.amount)}</strong>
+              </div>
+            `
+                )
+                .join('')
+        }
+        <div class="bifurcation-row" style="font-weight:800;color:#1E40AF;background:#EFF6FF;padding:3px 6px;border-radius:4px;">
+          <span>${t('ལག་དངུལ་དང་དངུལ་ཁང་བསྡོམས།', 'Subtotal Cash & Bank')}:</span>
+          <strong>${formatMoney(data.openAssetBifurcation.totalCashBankOpen)}</strong>
+        </div>
+
+        <!-- 3b. Party Advances & Receivables Bifurcation -->
+        <div style="font-size:11.5px;font-weight:800;color:#047857;margin-top:8px;margin-bottom:2px;">
+          🤝 ${t('མི་སྣའི་སྔ་འདོན་དང་བསྡུ་དགོས་རྒྱུ་དངོས། (Party Advances & Receivables):', 'Party Advances & Receivables:')}
+        </div>
+        ${
+          data.openAssetBifurcation.parties.length === 0
+            ? `<div class="bifurcation-row" style="color:#94A3B8;">— ${t('མི་སྣའི་སྔ་འདོན་ཐོག་མའི་ལྷག་མ་མེད།', 'No opening party advances')}</div>`
+            : data.openAssetBifurcation.parties
+                .map(
+                  p => `
+              <div class="bifurcation-row">
+                <span>${p.head.icon} ${t(p.head.bo, p.head.en)}</span>
+                <strong style="color:#15803D;">${formatMoney(p.amount)}</strong>
+              </div>
+            `
+                )
+                .join('')
+        }
+        <div class="bifurcation-row" style="font-weight:800;color:#065F46;background:#ECFDF5;padding:3px 6px;border-radius:4px;">
+          <span>${t('མི་སྣའི་སྔ་འདོན་བསྡོམས།', 'Subtotal Party Receivables')}:</span>
+          <strong>${formatMoney(data.openAssetBifurcation.totalPartyAssetOpen)}</strong>
+        </div>
+
+        <!-- 3c. Negative General Fund / Deficit if applicable -->
+        ${
+          data.openAssetBifurcation.negativeGeneralFund > 0
+            ? `
+          <div style="font-size:11.5px;font-weight:800;color:#B91C1C;margin-top:8px;margin-bottom:2px;">
+            🏛️ ${t('མ་དངུལ་ཆད་ཆས། (Deficit / Negative General Fund):', 'Negative General Fund (Deficit):')}
+          </div>
+          <div class="bifurcation-row" style="background:#FEF2F2;padding:3px 6px;border-radius:4px;color:#991B1B;">
+            <span>${t('སྤྱི་བཏང་མ་དངུལ་ཆད་ཆས། (Negative Opening Fund brought to Asset)', 'Deficit brought to Assets')}</span>
+            <strong style="color:#B91C1C;">${formatMoney(data.openAssetBifurcation.negativeGeneralFund)}</strong>
+          </div>
+        `
+            : ''
+        }
+
+        <!-- 3d. Grand Total Asset Opening Balance Banner -->
+        <div class="bifurcation-total-row" style="background:#FEF3C7;padding:8px 10px;border-radius:8px;margin-top:10px;border:1.5px solid #F59E0B;">
+          <div>
+            <div style="font-size:12.5px;font-weight:900;color:#78350F;">
+              🏁 ${t('ཁྱོན་བསྡོམས་ཐོག་མའི་རྒྱུ་དངོས་ལྷག་མ།', 'Total Opening Balance (Assets)')}
+            </div>
+            <div style="font-size:10px;color:#92400E;">
+              ${t('ལག་དངུལ་ + དངུལ་ཁང་ + མི་སྣའི་སྔ་འདོན།' + (data.openAssetBifurcation.negativeGeneralFund > 0 ? ' + མ་དངུལ་ཆད་ཆས།' : ''), 'Cash & Bank + Party Advances' + (data.openAssetBifurcation.negativeGeneralFund > 0 ? ' + Deficit' : ''))}
+            </div>
+          </div>
+          <div style="font-size:17px;font-weight:900;color:#92400E;">
+            ${formatMoney(data.openAssetBifurcation.totalAssetOpening)}
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Bank-Statement Style Transactions Table with Running Balance -->
+      <div style="margin-bottom:12px;">
+        <div style="font-size:13.5px;font-weight:900;color:#0F172A;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span>📖 ${t('རྩིས་དེབ་ཁྲ་མ་དང་རིམ་བྱུང་ལྷག་མ།', 'Cash Book Transactions with Running Balance')}</span>
+          <span style="font-size:11px;color:#64748B;font-weight:600;">
+            ${data.statementRows.length} ${t('ཐོ་གཞུང་།', 'entries')}
+          </span>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table class="fin-table" style="font-size:11px;">
+            <thead>
+              <tr style="background:#F1F5F9;">
+                <th style="text-align:left;white-space:nowrap;">${t('ཚེས།', 'Date')}</th>
+                <th style="text-align:left;white-space:nowrap;">${t('འཛིན་ཨང་།', 'Voucher')}</th>
+                <th style="text-align:left;">${t('ཁ་གཏད་རྩིས་འགོ་དང་གསལ་བཤད།', 'Particulars & Narration')}</th>
+                <th style="text-align:left;white-space:nowrap;">${t('རྩིས་ཁྲ།', 'A/c')}</th>
+                <th style="text-align:right;white-space:nowrap;">${t('བྱུང་བ། (In)', 'Receipts (In Dr)')}</th>
+                <th style="text-align:right;white-space:nowrap;">${t('སོང་བ། (Out)', 'Payments (Out Cr)')}</th>
+                <th style="text-align:right;white-space:nowrap;">${t('ལྷག་མ།', 'Running Balance')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Row 0: Opening Balance b/f -->
+              <tr style="background:#FEF3C7;font-weight:800;">
+                <td style="color:#78350F;white-space:nowrap;">${data.periodFrom}</td>
+                <td><span class="voucher-tag" style="background:#FDE047;color:#78350F;font-size:9px;">B/F</span></td>
+                <td style="color:#78350F;" colspan="2">🏁 ${t('ཐོག་མའི་རྒྱུ་དངོས་ལྷག་མ།', 'Opening Balance b/f')}</td>
+                <td style="text-align:right;color:#64748B;">—</td>
+                <td style="text-align:right;color:#64748B;">—</td>
+                <td style="text-align:right;color:#78350F;font-weight:900;">
+                  ${formatMoney(data.openAssetBifurcation.totalAssetOpening)}
+                </td>
+              </tr>
+
+              <!-- Transaction Rows in chronological order -->
+              ${
+                data.statementRows.length === 0
+                  ? `<tr><td colspan="7" style="text-align:center;color:#64748B;padding:16px;">${t('རྩིས་དུས་འདིའི་ནང་རྩིས་ཐོ་མི་འདུག', 'No transactions in this period.')}</td></tr>`
+                  : data.statementRows
+                      .map(r => {
+                        const isIn = r.tx.voucherType === 'RECEIPT';
+                        const isOut = r.tx.voucherType === 'PAYMENT';
+                        const isContra = r.tx.voucherType === 'CONTRA';
+                        const isJv = r.tx.voucherType === 'JV';
+
+                        const particulars = isJv
+                          ? `${r.toHead.icon} ${t(r.toHead.bo, r.toHead.en)} | ${r.fromHead.icon} ${t(r.fromHead.bo, r.fromHead.en)}`
+                          : isContra
+                          ? `🔄 ${r.fromHead.icon} ${t(r.fromHead.bo, r.fromHead.en)} → ${r.toHead.icon} ${t(r.toHead.bo, r.toHead.en)}`
+                          : isIn
+                          ? `📥 ${r.fromHead.icon} ${t(r.fromHead.bo, r.fromHead.en)}`
+                          : `📤 ${r.toHead.icon} ${t(r.toHead.bo, r.toHead.en)}`;
+
+                        return `
+                        <tr>
+                          <td style="white-space:nowrap;font-size:10px;">${r.tx.date}</td>
+                          <td style="white-space:nowrap;">
+                            <div style="font-weight:700;font-size:10px;">${r.tx.receiptNo || '—'}</div>
+                            <span class="voucher-tag ${r.tx.voucherType}" style="font-size:8.5px;padding:1px 4px;">
+                              ${getVoucherDisplayBadge(r.tx.voucherType)}
+                            </span>
+                          </td>
+                          <td>
+                            <div style="font-weight:700;color:#0F172A;">${particulars}</div>
+                            <div style="font-size:10px;color:#64748B;">${t(r.tx.partyBo || r.tx.noteBo, r.tx.partyEn || r.tx.noteEn)}</div>
+                          </td>
+                          <td style="white-space:nowrap;font-size:10px;color:#475569;">
+                            ${r.accountName}
+                          </td>
+                          <td style="text-align:right;color:#15803D;font-weight:700;white-space:nowrap;">
+                            ${r.inAmt > 0 ? formatMoney(r.inAmt) : '—'}
+                          </td>
+                          <td style="text-align:right;color:#B91C1C;font-weight:700;white-space:nowrap;">
+                            ${r.outAmt > 0 ? formatMoney(r.outAmt) : '—'}
+                          </td>
+                          <td style="text-align:right;font-weight:800;color:#0F172A;white-space:nowrap;">
+                            ${formatMoney(r.runningBal)}
+                          </td>
+                        </tr>
+                      `;
+                      })
+                      .join('')
+              }
+            </tbody>
+            <tfoot>
+              <tr style="background:#FEF3C7;font-weight:900;color:#78350F;">
+                <td colspan="4">${t('ཁྱོན་བསྡོམས་བྱུང་སོང་དང་མཐའ་མའི་རིམ་བྱུང་ལྷག་མ།', 'Total Receipts, Payments & Final Running Balance')}</td>
+                <td style="text-align:right;color:#15803D;">+${formatMoney(data.totalReceipts)}</td>
+                <td style="text-align:right;color:#B91C1C;">-${formatMoney(data.totalPayments)}</td>
+                <td style="text-align:right;color:#0F172A;font-size:12px;">
+                  ${formatMoney(data.finalRunningBal)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- 5. Closing Asset-Side Detailed Bifurcation -->
+      <div class="bifurcation-card" style="border-color:#10B981;background:#ECFDF5;margin-bottom:14px;">
+        <div class="bifurcation-title" style="color:#065F46;">
+          <span>🏁 ${t('མཐའ་མའི་རྒྱུ་དངོས་ལྷག་མའི་ཁྱོན་བསྡོམས་དང་ཞིབ་ཕྲའི་དབྱེ་ཞིབ།', 'Closing Assets & Detail Bifurcation')}</span>
+          <span style="font-size:10.5px;color:#047857;font-weight:700;">
+            ${t('མཐའ་མའི་དངོས་ཡོད།', 'Closing Position')}
+          </span>
+        </div>
+
+        <!-- 5a. Closing Cash in Hand -->
+        <div style="font-size:11.5px;font-weight:800;color:#1E3A8A;margin-top:4px;margin-bottom:2px;">
+          💵 ${t('མཐའ་མའི་ལག་དངུལ། (Closing Cash in Hand):', 'Closing Cash in Hand:')}
+        </div>
+        <div class="bifurcation-row">
+          <span>💵 ${t('ལག་དངུལ།', 'Cash in Hand')}</span>
+          <strong style="color:#15803D;">${formatMoney(data.closingAssetBifurcation.cashBalance)}</strong>
+        </div>
+
+        <!-- 5b. Closing Bank Accounts -->
+        <div style="font-size:11.5px;font-weight:800;color:#1E3A8A;margin-top:6px;margin-bottom:2px;">
+          🏦 ${t('མཐའ་མའི་དངུལ་ཁང་ཁག (Closing Bank Accounts):', 'Closing Bank Accounts:')}
+        </div>
+        ${
+          data.closingAssetBifurcation.closingBankAssets.length === 0
+            ? `<div class="bifurcation-row" style="color:#94A3B8;">— ${t('དངུལ་ཁང་མཐའ་མའི་ལྷག་མ་མེད།', 'None')}</div>`
+            : data.closingAssetBifurcation.closingBankAssets
+                .map(
+                  b => `
+              <div class="bifurcation-row">
+                <span>${b.head.icon} ${t(b.head.bo, b.head.en)}</span>
+                <strong style="color:#15803D;">${formatMoney(b.amount)}</strong>
+              </div>
+            `
+                )
+                .join('')
+        }
+        <div class="bifurcation-row" style="font-weight:800;color:#1E40AF;background:#EFF6FF;padding:3px 6px;border-radius:4px;">
+          <span>${t('མཐའ་མའི་ལག་དངུལ་དང་དངུལ་ཁང་བསྡོམས།', 'Subtotal Closing Cash & Bank')}:</span>
+          <strong>${formatMoney(data.closingAssetBifurcation.totalCashBankClose)}</strong>
+        </div>
+
+        <!-- 5c. Closing Party Advances & Receivables (Assets) -->
+        <div style="font-size:11.5px;font-weight:800;color:#047857;margin-top:8px;margin-bottom:2px;">
+          🤝 ${t('མཐའ་མའི་མི་སྣའི་སྔ་འདོན་དང་བསྡུ་དགོས་རྒྱུ་དངོས། (Closing Party Advances & Receivables):', 'Closing Party Advances & Receivables:')}
+        </div>
+        ${
+          data.closingAssetBifurcation.parties.length === 0
+            ? `<div class="bifurcation-row" style="color:#94A3B8;">— ${t('མཐའ་མའི་མི་སྣའི་སྔ་འདོན་ལྷག་མ་མེད།', 'None')}</div>`
+            : data.closingAssetBifurcation.parties
+                .map(
+                  p => `
+              <div class="bifurcation-row">
+                <span>${p.head.icon} ${t(p.head.bo, p.head.en)}</span>
+                <strong style="color:#15803D;">${formatMoney(p.amount)}</strong>
+              </div>
+            `
+                )
+                .join('')
+        }
+        <div class="bifurcation-row" style="font-weight:800;color:#065F46;background:#ECFDF5;padding:3px 6px;border-radius:4px;">
+          <span>${t('མཐའ་མའི་མི་སྣའི་སྔ་འདོན་བསྡོམས།', 'Subtotal Closing Party Receivables')}:</span>
+          <strong>${formatMoney(data.closingAssetBifurcation.totalPartyClose)}</strong>
+        </div>
+
+        <!-- 5d. Grand Total Balance Sheet Assets Banner -->
+        <div class="bifurcation-total-row" style="background:#D1FAE5;padding:8px 10px;border-radius:8px;margin-top:10px;border:1.5px solid #10B981;">
+          <div>
+            <div style="font-size:12.5px;font-weight:900;color:#065F46;">
+              🏆 ${t('ལྷག་ཤོག་རྒྱུ་དངོས་ཆ་ཚང་གི་རིན་ཐང་།', 'Total Balance Sheet Assets')}
+            </div>
+            <div style="font-size:10px;color:#047857;">
+              ${t('ལག་དངུལ་ + དངུལ་ཁང་ + མི་སྣའི་སྔ་འདོན་ཡོངས་རྫོགས།', 'Cash & Bank + All Party Advances')}
+            </div>
+          </div>
+          <div style="font-size:18px;font-weight:900;color:#065F46;">
+            ${formatMoney(data.closingAssetBifurcation.totalClosingAssets)}
+          </div>
+        </div>
+
+        <!-- 5e. Comprehensive Mathematical Reconciliation Box -->
+        <div style="margin-top:12px;padding:10px 12px;background:#F8FAFC;border:1.5px solid #0284C7;border-radius:8px;">
+          <div style="font-size:12px;font-weight:900;color:#0369A1;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px dashed #93C5FD;padding-bottom:5px;">
+            <span>⚖️ ${t('རྩིས་དེབ་ཁྲ་མའི་རིམ་བྱུང་ལྷག་མ་དང་ཁ་འགྲིག་གསལ་བཤད།', 'Cash Book Statement Reconciliation & Tally Bridge')}</span>
+            <span style="font-size:9.5px;color:#0284C7;font-weight:700;">${t('རྩིས་ཁྲ་དང་ལྷག་ཤོག་གཉིས་ཀ་ཁ་འགྲིག', 'Reconciled with Table & Balance Sheet')}</span>
+          </div>
+
+          <!-- Line 1: Table Final Running Balance -->
+          <div class="bifurcation-row" style="font-weight:800;color:#0F172A;font-size:11.5px;">
+            <span>🏁 ${t('རྩིས་དེབ་ཁྲ་མའི་མཐའ་མའི་རིམ་བྱུང་ལྷག་མ།', 'Cash Book Table Final Running Balance')}:</span>
+            <strong style="font-size:13px;color:#0F172A;">${formatMoney(data.finalRunningBal)}</strong>
+          </div>
+
+          <!-- Line 2: Old Debt Cleared / Collected if any -->
+          ${
+            data.closingAssetBifurcation.totalClearedOldPartyAmt > 0
+              ? `
+            <div style="margin-top:6px;padding-top:4px;border-top:1px dashed #E2E8F0;">
+              <div style="font-size:11px;font-weight:800;color:#B91C1C;display:flex;justify-content:space-between;">
+                <span>➖ ${t('ཐོག་མའི་མི་སྣའི་བུ་ལོན་ཕྱིར་བསྡུས་པ། (Old Debt Cleared / Collected):', 'Old Asset Debt Cleared / Collected:')}</span>
+                <strong style="color:#B91C1C;">-${formatMoney(data.closingAssetBifurcation.totalClearedOldPartyAmt)}</strong>
+              </div>
+              ${data.closingAssetBifurcation.clearedOldParties
+                .map(
+                  p => `
+                <div class="bifurcation-row" style="font-size:10.5px;padding-left:14px;color:#475569;">
+                  <span>${p.head.icon} ${t(p.head.bo, p.head.en)} <small style="color:#64748B;">(${t('ཐོག་མ།', 'Open')} ${formatMoney(p.openNet)} → ${t('ལྷག་མ།', 'Close')} ${formatMoney(p.closeNet)})</small></span>
+                  <strong style="color:#B91C1C;">-${formatMoney(p.amount)}</strong>
+                </div>
+              `
+                )
+                .join('')}
+              <div style="font-size:9.5px;color:#64748B;padding-left:14px;margin-top:1px;">
+                ℹ️ ${t('ཐོག་མའི་རྒྱུ་ནོར་ནང་ཚུད་ཟིན་པ་དང་རྩིས་དེབ་ནང་བྱུང་བར་བཅུག་པས་རྩིས་འགྲིག་ཆེད་འཐེན་པ།', 'Already counted in Opening Assets & received as cash inflow in table; deducted to reconcile')}
+              </div>
+            </div>
+          `
+              : ''
+          }
+
+          <!-- Line 3: New Advances Given in Period if any -->
+          ${
+            data.closingAssetBifurcation.totalNewAdvancesAmt > 0
+              ? `
+            <div style="margin-top:6px;padding-top:4px;border-top:1px dashed #E2E8F0;">
+              <div style="font-size:11px;font-weight:800;color:#047857;display:flex;justify-content:space-between;">
+                <span>➕ ${t('རྩིས་དུས་ནང་གསར་སྤྲད་སྔ་འདོན། (New Advances Given in Period):', 'New Advances Given in Period:')}</span>
+                <strong style="color:#047857;">+${formatMoney(data.closingAssetBifurcation.totalNewAdvancesAmt)}</strong>
+              </div>
+              ${data.closingAssetBifurcation.newAdvancesParties
+                .map(
+                  p => `
+                <div class="bifurcation-row" style="font-size:10.5px;padding-left:14px;color:#475569;">
+                  <span>${p.head.icon} ${t(p.head.bo, p.head.en)}</span>
+                  <strong style="color:#047857;">+${formatMoney(p.amount)}</strong>
+                </div>
+              `
+                )
+                .join('')}
+              <div style="font-size:9.5px;color:#64748B;padding-left:14px;margin-top:1px;">
+                ℹ️ ${t('ལག་དངུལ་ནས་སྤྲད་ཀྱང་ལྷག་ཤོག་རྒྱུ་ནོར་དུ་གྱུར་པས་རྩིས་འགྲིག་ཆེད་བསྣན་པ།', 'Paid out from cash book; created as Balance Sheet Asset')}
+              </div>
+            </div>
+          `
+              : ''
+          }
+
+          <!-- Line 4: Excess Payments Flipped to Liabilities if any -->
+          ${
+            data.closingAssetBifurcation.totalFlippedLiabilityAmt > 0
+              ? `
+            <div style="margin-top:6px;padding-top:4px;border-top:1px dashed #E2E8F0;">
+              <div style="font-size:11px;font-weight:800;color:#D97706;display:flex;justify-content:space-between;">
+                <span>ℹ️ ${t('མི་སྣས་འཕར་སྤྲོད་བྱས་པའི་བུ་ལོན་/འགན་འཁྲི། (Overpayments Flipped to Liabilities):', 'Overpayments Flipped to Liabilities:')}</span>
+                <strong style="color:#D97706;">${formatMoney(data.closingAssetBifurcation.totalFlippedLiabilityAmt)}</strong>
+              </div>
+              ${data.closingAssetBifurcation.flippedLiabilityParties
+                .map(
+                  p => `
+                <div class="bifurcation-row" style="font-size:10.5px;padding-left:14px;color:#475569;">
+                  <span>${p.head.icon} ${t(p.head.bo, p.head.en)} <small style="color:#D97706;">(${t('འགན་འཁྲི།', 'Liability / Cr')} ${formatMoney(p.amount)})</small></span>
+                  <strong style="color:#D97706;">${formatMoney(p.amount)}</strong>
+                </div>
+              `
+                )
+                .join('')}
+              <div style="font-size:9.5px;color:#64748B;padding-left:14px;margin-top:1px;">
+                ℹ️ ${t('མི་སྣས་བུ་ལོན་ལས་བརྒལ་ཏེ་སྤྲད་པས་ལྷག་ཤོག་འགན་འཁྲིའི་ (Liability) ཁོངས་སུ་བཞག་ཡོད།', 'Paid in excess of receivable; transferred to Balance Sheet Liabilities')}
+              </div>
+            </div>
+          `
+              : ''
+          }
+
+          <!-- Result 1: Reconciled Balance Sheet Total Assets -->
+          <div class="bifurcation-total-row" style="background:#D1FAE5;padding:7px 10px;border-radius:6px;margin-top:8px;border:1.5px solid #10B981;">
+            <div>
+              <div style="font-size:12px;font-weight:900;color:#065F46;">
+                🏆 ${t('མཐའ་མའི་རྩིས་འགྲིག་ཁྱོན་བསྡོམས་རྒྱུ་ནོར།', 'Reconciled Balance Sheet Total Assets')}
+              </div>
+              <div style="font-size:9.5px;color:#047857;">
+                ${formatMoney(data.finalRunningBal)}
+                ${data.closingAssetBifurcation.totalClearedOldPartyAmt > 0 ? ` - ${formatMoney(data.closingAssetBifurcation.totalClearedOldPartyAmt)}` : ''}
+                ${data.closingAssetBifurcation.totalNewAdvancesAmt > 0 ? ` + ${formatMoney(data.closingAssetBifurcation.totalNewAdvancesAmt)}` : ''}
+                <span style="background:#065F46;color:#FEF08A;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:800;margin-left:4px;">
+                  ✅ ${t('ལྷག་ཤོག་རྒྱུ་ནོར་དང་ཁ་འགྲིག', 'Tallied with Total Assets')}
+                </span>
+              </div>
+            </div>
+            <div style="font-size:16.5px;font-weight:900;color:#065F46;">
+              ${formatMoney(data.closingAssetBifurcation.reconciledAssetsFromTable)}
+            </div>
+          </div>
+
+          <!-- Result 2: Bridge to Physical Cash & Bank -->
+          <div class="bifurcation-total-row" style="background:#EFF6FF;padding:7px 10px;border-radius:6px;margin-top:6px;border:1px solid #93C5FD;">
+            <div>
+              <div style="font-size:11.5px;font-weight:800;color:#1E40AF;">
+                🏦 ${t('དངུལ་སྒམ་དང་དངུལ་ཁང་དངོས་ཡོད་ལྷག་མའི་རྩིས་འགྲིག', 'Bridge to Actual Liquid Cash & Bank')}
+              </div>
+              <div style="font-size:9.5px;color:#1E3A8A;">
+                ${formatMoney(data.finalRunningBal)} - ${formatMoney(data.closingAssetBifurcation.nonCashOpeningTotal)} (${t('ཐོག་མའི་མི་སྣའི་སྔ་འདོན།', 'Opening Non-Cash Assets')})
+                <span style="background:#1E40AF;color:#FFFFFF;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:800;margin-left:4px;">
+                  ✅ ${t('དངུལ་སྒམ་དང་དངུལ་ཁང་དངོས་ཡོད་ཁ་འགྲིག', 'Tallied with Liquid Cash & Bank')}
+                </span>
+              </div>
+            </div>
+            <div style="font-size:15px;font-weight:900;color:#1E40AF;">
+              ${formatMoney(data.closingAssetBifurcation.reconciledCashBankFromTable)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Official Signatures Verification Box -->
+      <div class="statement-seal-box" style="border-top:1.5px solid #CBD5E1;padding-top:18px;margin-top:16px;display:flex;justify-content:space-around;align-items:flex-end;flex-wrap:wrap;gap:20px;">
+        <div style="text-align:center;">
+          <div style="height:38px;border-bottom:1.5px solid #64748B;width:130px;margin:0 auto;"></div>
+          <div style="margin-top:6px;font-weight:800;font-size:11px;color:#1E293B;">✍️ ${t('རྩིས་པ།', 'Prepared by')}</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="height:38px;border-bottom:1.5px solid #64748B;width:130px;margin:0 auto;"></div>
+          <div style="margin-top:6px;font-weight:800;font-size:11px;color:#1E293B;">🔍 ${t('ཞིབ་བཤེར་པ།', 'Audited / Verified by')}</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="height:38px;border-bottom:1.5px solid #64748B;width:130px;margin:0 auto;"></div>
+          <div style="margin-top:6px;font-weight:800;font-size:11px;color:#1E293B;">👑 ${t('འགན་འཛིན།', 'Approved by Director')}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function openCashBookPdfModal() {
+  document.body.classList.add('modal-printing-cashbook');
+  const sheet = document.getElementById('modalSheet');
+  if (!sheet) return;
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    ${renderCashBookPdfStatementHtml()}
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function printCashBookPdfStandalone() {
+  const statementEl = document.getElementById('printableCashBookStatement');
+  if (!statementEl) {
+    window.print();
+    return;
+  }
+
+  const printWin = window.open('', '_blank');
+  if (!printWin) {
+    window.print();
+    return;
+  }
+
+  const langAttr = state.lang === 'en' ? 'en' : 'bo';
+  const docTitle =
+    state.lang === 'en'
+      ? 'Cash Book Statement - Tibetan Account Book'
+      : 'ལག་དངུལ་དང་དངུལ་ཁང་གི་རྩིས་དེབ་ཁྲ་མ། • བོད་ཀྱི་རྩིས་དེབ།';
+
+  printWin.document.write(`<!DOCTYPE html>
+<html lang="${langAttr}">
+<head>
+  <meta charset="UTF-8">
+  <title>${docTitle}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Tibetan:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 12mm 10mm 14mm 10mm;
+    }
+    html, body {
+      background: #FFFFFF !important;
+      padding: 16px;
+      margin: 0;
+      font-family: 'Noto Sans Tibetan', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #0F172A;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .no-print { display: none !important; }
+    .cashbook-statement-paper {
+      box-shadow: none !important;
+      border: 1px solid #CBD5E1 !important;
+      padding: 16px !important;
+      border-radius: 8px !important;
+    }
+    .statement-header-box {
+      text-align: center;
+      border-bottom: 1.5px solid #0F172A;
+      padding-top: 14px;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+    .statement-yiggo {
+      font-size: 19px;
+      color: #881337;
+      font-weight: 800;
+      line-height: 2.1;
+      padding-top: 12px;
+      padding-bottom: 4px;
+      display: block;
+    }
+    .statement-title-main {
+      line-height: 1.7;
+      padding-top: 4px;
+      padding-bottom: 2px;
+    }
+    .statement-title-sub {
+      line-height: 1.6;
+      padding-top: 3px;
+    }
+    tr, .fin-table tr {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+    th, td, .fin-table th, .fin-table td {
+      padding: 3.5px 5px !important;
+      font-size: 10px !important;
+      line-height: 1.45 !important;
+    }
+    thead {
+      display: table-header-group !important;
+    }
+    tfoot {
+      display: table-footer-group !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+    .bifurcation-card {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      margin-bottom: 8px !important;
+    }
+    .statement-seal-box {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      margin-top: 16px !important;
+      padding-top: 16px !important;
+    }
+    @media print {
+      body { padding: 0 !important; }
+      .cashbook-statement-paper { border: none !important; }
+    }
+  </style>
+</head>
+<body>
+  ${statementEl.outerHTML}
+  <script>
+    window.addEventListener('load', () => {
+      setTimeout(() => { window.print(); }, 250);
+    });
+  <\/script>
+</body>
+</html>`);
+
+  printWin.document.close();
+}
+
+function copyCashBookStatementText() {
+  const data = computeCashBookPdfData();
+  const book = data.book;
+
+  const lines = [
+    `༄༅། །བོད་ཀྱི་རྩིས་དེབ། • Tibetan Account Book`,
+    `ལག་དངུལ་དང་དངུལ་ཁང་གི་རྩིས་དེབ་ཁྲ་མ། • Cash Book & Asset Statement`,
+    `----------------------------------------------------`,
+    `🏛️ ${t('རྩིས་དེབ།', 'Book')}: ${book.bo} (${book.en})`,
+    `📅 ${t('རྩིས་དུས།', 'Period')}: ${data.periodFrom} → ${data.periodTo}`,
+    `🕒 ${t('ཕྱིར་འདྲེན་དུས་ཚོད།', 'Export Date & Time')}: ${data.exportDateTimeStr}`,
+    `💱 ${t('དངུལ་ལོར།', 'Currency')}: ${state.currency}`,
+    `----------------------------------------------------`,
+    `🏁 [${t('ཐོག་མའི་རྒྱུ་དངོས་ལྷག་མ།', 'Total Opening Assets')}]: ${formatMoney(data.openAssetBifurcation.totalAssetOpening)}`,
+    `- ${t('ལག་དངུལ་དང་དངུལ་ཁང་།', 'Cash & Bank')}: ${formatMoney(data.openAssetBifurcation.totalCashBankOpen)}`,
+    `- ${t('མི་སྣའི་སྔ་འདོན།', 'Party Advances')}: ${formatMoney(data.openAssetBifurcation.totalPartyAssetOpen)}`,
+    data.openAssetBifurcation.negativeGeneralFund > 0
+      ? `- ${t('མ་དངུལ་ཆད་ཆས། (Deficit)', 'Negative General Fund')}: ${formatMoney(data.openAssetBifurcation.negativeGeneralFund)}`
+      : '',
+    `----------------------------------------------------`,
+    `📊 [${t('རྩིས་དུས་བྱུང་སོང་བསྡོམས།', 'Period Cash Flow')}]:`,
+    `+ ${t('བྱུང་བ། (Inflow)', 'Receipts')}: ${formatMoney(data.totalReceipts)}`,
+    `- ${t('སོང་བ། (Outflow)', 'Payments')}: ${formatMoney(data.totalPayments)}`,
+    `= ${t('མཐའ་མའི་རིམ་བྱུང་ལྷག་མ།', 'Final Running Bal')}: ${formatMoney(data.finalRunningBal)}`,
+    `----------------------------------------------------`,
+    `🏁 [${t('མཐའ་མའི་ལག་དངུལ་དང་དངུལ་ཁང་།', 'Closing Cash & Bank')}]: ${formatMoney(data.closingAssetBifurcation.totalCashBankClose)}`,
+    `- [${t('མཐའ་མའི་མི་སྣའི་སྔ་འདོན།', 'Closing Party Receivables')}]: ${formatMoney(data.closingAssetBifurcation.totalPartyClose)}`,
+    `🏆 [${t('ལྷག་ཤོག་རྒྱུ་དངོས་ཆ་ཚང་།', 'Total Balance Sheet Assets')}]: ${formatMoney(data.closingAssetBifurcation.totalClosingAssets)}`,
+    `----------------------------------------------------`,
+    `⚖️ [${t('རྩིས་དེབ་ཁྲ་མའི་རིམ་བྱུང་ལྷག་མ་དང་ཁ་འགྲིག་གསལ་བཤད།', 'Cash Book Statement Reconciliation')}]:`,
+    `= ${t('རྩིས་དེབ་ཁྲ་མའི་མཐའ་མའི་རིམ་བྱུང་ལྷག་མ།', 'Table Final Running Bal')}: ${formatMoney(data.finalRunningBal)}`,
+    data.closingAssetBifurcation.totalClearedOldPartyAmt > 0
+      ? `- ${t('ཐོག་མའི་མི་སྣའི་བུ་ལོན་ཕྱིར་བསྡུས་པ།', 'Old Debt Cleared/Collected')}: -${formatMoney(data.closingAssetBifurcation.totalClearedOldPartyAmt)}`
+      : '',
+    data.closingAssetBifurcation.totalNewAdvancesAmt > 0
+      ? `+ ${t('རྩིས་དུས་ནང་གསར་སྤྲད་སྔ་འདོན།', 'New Advances in Period')}: +${formatMoney(data.closingAssetBifurcation.totalNewAdvancesAmt)}`
+      : '',
+    data.closingAssetBifurcation.totalFlippedLiabilityAmt > 0
+      ? `ℹ️ ${t('མི་སྣས་འཕར་སྤྲོད་བྱས་པའི་བུ་ལོན། (Liability)', 'Overpayments Flipped to Liabilities')}: ${formatMoney(data.closingAssetBifurcation.totalFlippedLiabilityAmt)}`
+      : '',
+    `🟰 [${t('མཐའ་མའི་རྩིས་འགྲིག་ཁྱོན་བསྡོམས་རྒྱུ་ནོར།', 'Reconciled BS Total Assets')}]: ${formatMoney(data.closingAssetBifurcation.reconciledAssetsFromTable)} (✅ ${t('ལྷག་ཤོག་དང་ཁ་འགྲིག', 'Tallied with Total Assets')})`,
+    `🏦 [${t('དངུལ་སྒམ་དང་དངུལ་ཁང་དངོས་ཡོད་ལྷག་མ།', 'Bridge to Liquid Cash & Bank')}]: ${formatMoney(data.closingAssetBifurcation.reconciledCashBankFromTable)} (✅ ${t('དངུལ་སྒམ་དང་ཁ་འགྲིག', 'Tallied with Cash & Bank')})`,
+    `----------------------------------------------------`,
+    `Tibetan Account Book • བོད་ཀྱི་རྩིས་དེབ།`
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard
+      .writeText(lines)
+      .then(() => {
+        showToast(
+          t(
+            '📋 རྩིས་དེབ་ཁྲ་མའི་གསལ་བཤད་ངོ་བཤུས་ཟིན།',
+            '📋 Cash Book statement text copied to clipboard!'
+          )
+        );
+      })
+      .catch(() => {
+        showToast(t('❌ ངོ་བཤུས་མ་ཐུབ།', 'Failed to copy'));
+      });
+  } else {
+    showToast(
+      t(
+        '📋 རྩིས་དེབ་ཁྲ་མའི་གསལ་བཤད་ངོ་བཤུས་ཟིན།',
+        '📋 Cash Book statement text copied to clipboard!'
+      )
+    );
+  }
+}
+
+// ============================================================================
+// Modal Sheets: Entry with Period Validation + Group Shown Below Each Head
+// ============================================================================
+
+let modalEntryMode = 'in'; // 'in' | 'out' | 'contra' | 'jv'
+let modalPrimaryHeadId = 'sales';
+let modalPaymentHeadId = 'head_cash';
+let modalDateValue = getTodayStr();
+
+function openEntryModal(mode) {
+  modalEntryMode = mode;
+  // Default to Today if within period, otherwise periodTo
+  const today = getTodayStr();
+  modalDateValue = isDateWithinPeriod(today) ? today : state.periodTo;
+
+  if (mode === 'in') {
+    const firstInc = state.accountHeads.find(h => h.group === 'income') || state.accountHeads[0];
+    modalPrimaryHeadId = firstInc.id;
+    modalPaymentHeadId = 'head_cash';
+  } else if (mode === 'out') {
+    const firstExp = state.accountHeads.find(h => h.group === 'expense') || state.accountHeads[0];
+    modalPrimaryHeadId = firstExp.id;
+    modalPaymentHeadId = 'head_cash';
+  } else if (mode === 'contra') {
+    modalPaymentHeadId = 'head_cash';
+    modalPrimaryHeadId = 'head_sbi';
+  } else if (mode === 'jv') {
+    modalPaymentHeadId = 'rent_out';
+    modalPrimaryHeadId = 'food';
+  }
+
+  renderEntryModalContent();
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function onEntryDateInputChanged(val) {
+  modalDateValue = val;
+  const warnEl = document.getElementById('periodValidationBanner');
+  if (warnEl) {
+    warnEl.style.display = isDateWithinPeriod(val) ? 'none' : 'block';
+  }
+}
+
+function renderEntryModalContent() {
+  const mode = modalEntryMode;
+  const sheet = document.getElementById('modalSheet');
+
+  const resolved = resolveDoubleEntry(mode, modalPrimaryHeadId, modalPaymentHeadId);
+  const fromHead = getHead(resolved.crHeadId);
+  const toHead = getHead(resolved.drHeadId);
+  const dateValid = isDateWithinPeriod(modalDateValue);
+
+  const headerTitle =
+    mode === 'in'
+      ? '➕ ' + t('ཡོང་འབབ་ཐོ་འགོད།', 'Receipt (Money In)')
+      : mode === 'out'
+      ? '➖ ' + t('འགྲོ་སོང་ཐོ་འགོད།', 'Payment (Money Out)')
+      : mode === 'contra'
+      ? '🔄 ' + t('དངུལ་བཅུག་བཏོན།', 'Contra Transfer')
+      : '📒 ' + t('མཚུངས་ཁྲ།', 'Journal Entry (JV)');
+
+  const periodWarningHtml = `
+    <div id="periodValidationBanner" style="display:${
+      dateValid ? 'none' : 'block'
+    };background:#FEE2E2;border:1.5px solid #EF4444;color:#991B1B;border-radius:10px;padding:8px 10px;margin-bottom:10px;font-size:11.5px;font-weight:700;">
+      ⚠️ ${t(
+        `ཚེས་གྲངས་འདི་གདམས་པའི་རྩིས་དུས་ (${state.periodFrom} ནས་ ${state.periodTo}) ཀྱི་ཕྱི་ལ་རེད་འདུག རྩིས་དུས་ནང་གི་ཚེས་གྲངས་འདེམས་རོགས།`,
+        `Date is outside the selected Accounting Period (${state.periodFrom} to ${state.periodTo})! Please choose a date within the period.`
+      )}
+    </div>
+  `;
+
+  if (mode === 'jv' || mode === 'contra') {
+    const selectableHeads =
+      mode === 'contra'
+        ? state.accountHeads.filter(h => h.group === 'cash_bank')
+        : state.accountHeads;
+
+    sheet.innerHTML = `
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title" style="color:${mode === 'jv' ? '#6D28D9' : '#0369A1'}">${headerTitle}</div>
+        <button class="sheet-close" onclick="closeModal()">✕</button>
+      </div>
+
+      <div class="segmented-bar" style="margin-bottom:10px;">
+        <button class="seg-btn" onclick="switchModalMode('in')">➕ ${state.lang === 'en' ? 'In' : 'བྱུང་།'}</button>
+        <button class="seg-btn" onclick="switchModalMode('out')">➖ ${state.lang === 'en' ? 'Out' : 'སོང་།'}</button>
+        <button class="seg-btn ${mode === 'contra' ? 'active' : ''}" onclick="switchModalMode('contra')">🔄 ${state.lang === 'en' ? 'Contra' : 'དངུལ་བཅུག་བཏོན།'}</button>
+        <button class="seg-btn ${mode === 'jv' ? 'active' : ''}" onclick="switchModalMode('jv')">📒 ${state.lang === 'en' ? 'JV' : 'མཚུངས་ཁྲ།'}</button>
+      </div>
+
+      <!-- Amount + Changeable Date Row (Validated against Accounting Period) -->
+      <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:8px;">
+        <div class="ios-input-group">
+          <label class="ios-input-label">${t('དངུལ་འབོར།', 'Amount')}</label>
+          <input type="number" id="entryAmount" class="ios-input big-amount" placeholder="0" autofocus />
+        </div>
+        <div class="ios-input-group">
+          <label class="ios-input-label">📅 ${t('ཚེས་གྲངས།', 'Date')}</label>
+          <input
+            type="date"
+            id="entryDate"
+            class="ios-input"
+            style="font-size:13.5px;"
+            min="${state.periodFrom}"
+            max="${state.periodTo}"
+            value="${modalDateValue}"
+            onchange="onEntryDateInputChanged(this.value)"
+          />
+        </div>
+      </div>
+
+      ${periodWarningHtml}
+
+      <div class="ios-section-title" style="margin-top:2px;">
+        <span>${t(mode === 'jv' ? 'མཚུངས་ཁྲའི་རྩིས་འགོ་གཉིས་འདེམས་རོགས།' : 'དངུལ་སྤོ་རྩིས་འགོ་གཉིས་འདེམས་རོགས།', 'Pick Two Account Heads')}</span>
+        <button type="button" class="mini-btn" style="background:#FEF3C7;color:#881337;border-color:#F59E0B;" onclick="openCreateHeadModal()">
+          + ${t('རྩིས་འགོ་གསར་པ།', 'New Head')}
+        </button>
+      </div>
+
+      ${
+        mode === 'jv'
+          ? `
+          <!-- Box 1 for JV: རྩིས་འགོ་གང་ནས། (Debit Head / Dr) -->
+          <div class="ios-input-group" style="border:2px solid #86EFAC;background:#F0FDF4;margin-bottom:6px;">
+            <label class="ios-input-label" style="color:#15803D;font-size:13px;">
+              1️⃣ 📥 ${t('རྩིས་འགོ་གང་ནས། (Dr.)', 'Debit Head (Dr)')}
+            </label>
+            <select id="entryPrimaryHeadSelect" class="ios-input" style="font-size:14px;font-weight:700;" onchange="selectModalPrimaryHead(this.value)">
+              ${selectableHeads
+                .map(
+                  h => `
+                <option value="${h.id}" ${h.id === modalPrimaryHeadId ? 'selected' : ''}>
+                  ${h.icon} ${t(h.bo, h.en)} [${getHeadGroupShortText(h.group)}]
+                </option>
+              `
+                )
+                .join('')}
+            </select>
+          </div>
+
+          <!-- Visual Down Arrow: སྤོ་ཞུ། -->
+          <div style="text-align:center;font-size:18px;margin:4px 0;color:#6D28D9;font-weight:800;">
+            ⬇️ <span style="font-size:12.5px;">${t('སྤོ་ཞུ།', 'Adjust / Transfer')}</span> ⬇️
+          </div>
+
+          <!-- Box 2 for JV: རྩིས་འགོ་གང་ལ་བཏང་། (Credit Head / Cr) -->
+          <div class="ios-input-group" style="border:2px solid #FCA5A5;background:#FFF5F5;margin-bottom:12px;">
+            <label class="ios-input-label" style="color:#B91C1C;font-size:13px;">
+              2️⃣ 📤 ${t('རྩིས་འགོ་གང་ལ་བཏང་། (Cr.)', 'Credit Head (Cr)')}
+            </label>
+            <select id="entryPaymentHead" class="ios-input" style="font-size:14px;font-weight:700;" onchange="selectModalPaymentHead(this.value)">
+              ${selectableHeads
+                .map(
+                  h => `
+                <option value="${h.id}" ${h.id === modalPaymentHeadId ? 'selected' : ''}>
+                  ${h.icon} ${t(h.bo, h.en)} [${getHeadGroupShortText(h.group)}]
+                </option>
+              `
+                )
+                .join('')}
+            </select>
+          </div>
+          `
+          : `
+          <!-- Box 1 for Contra: བརྒྱུད་བཏང་། (Transfer From / Cr) -->
+          <div class="ios-input-group" style="border:2px solid #FCA5A5;background:#FFF5F5;margin-bottom:6px;">
+            <label class="ios-input-label" style="color:#B91C1C;font-size:13px;">
+              1️⃣ 📤 ${t('བརྒྱུད་བཏང་། (Cr.) (རྩིས་འགོ་གང་ནས།)', 'Transfer From / Paid Via (Cr)')}
+            </label>
+            <select id="entryPaymentHead" class="ios-input" style="font-size:14px;font-weight:700;" onchange="selectModalPaymentHead(this.value)">
+              ${selectableHeads
+                .map(
+                  h => `
+                <option value="${h.id}" ${h.id === modalPaymentHeadId ? 'selected' : ''}>
+                  ${h.icon} ${t(h.bo, h.en)} [${getHeadGroupShortText(h.group)}]
+                </option>
+              `
+                )
+                .join('')}
+            </select>
+          </div>
+
+          <!-- Visual Down Arrow: སྤོ་ཞུ། -->
+          <div style="text-align:center;font-size:18px;margin:4px 0;color:#6D28D9;font-weight:800;">
+            ⬇️ <span style="font-size:12.5px;">${t('སྤོ་ཞུ།', 'Transfer / Deposit To')}</span> ⬇️
+          </div>
+
+          <!-- Box 2 for Contra: བརྒྱུད་འབྱོར། (Transfer To / Dr) -->
+          <div class="ios-input-group" style="border:2px solid #86EFAC;background:#F0FDF4;margin-bottom:12px;">
+            <label class="ios-input-label" style="color:#15803D;font-size:13px;">
+              2️⃣ 📥 ${t('བརྒྱུད་འབྱོར། (Dr.) (རྩིས་འགོ་ལ་བཏང་།)', 'Transfer To / Received Via (Dr)')}
+            </label>
+            <select id="entryPrimaryHeadSelect" class="ios-input" style="font-size:14px;font-weight:700;" onchange="selectModalPrimaryHead(this.value)">
+              ${selectableHeads
+                .map(
+                  h => `
+                <option value="${h.id}" ${h.id === modalPrimaryHeadId ? 'selected' : ''}>
+                  ${h.icon} ${t(h.bo, h.en)} [${getHeadGroupShortText(h.group)}]
+                </option>
+              `
+                )
+                .join('')}
+            </select>
+          </div>
+          `
+      }
+
+      <!-- Simple Visual Summary Banner -->
+      <div class="double-entry-preview" style="background:#F5F3FF;border-color:#C4B5FD;">
+        <div style="font-weight:800;color:#5B21B6;margin-bottom:4px;">
+          ✨ ${t(mode === 'jv' ? 'མཚུངས་ཁྲའི་བསྡུས་དོན།' : 'དངུལ་སྤོའི་བསྡུས་དོན།', 'Voucher Summary')}:
+        </div>
+        <div style="font-size:13px;font-weight:700;color:#1E293B;">
+          ${
+            (() => {
+              const jvLabels = getVoucherDynamicHeadLabels(resolved);
+              const drDisp = getHeadDisplayLabel(jvLabels.drLabelBo, jvLabels.drLabelEn, true);
+              const crDisp = getHeadDisplayLabel(jvLabels.crLabelBo, jvLabels.crLabelEn, false);
+              const drLine = `<div style="color:#15803D;">📥 <strong>${drDisp}:</strong> ${toHead.icon} ${t(toHead.bo, toHead.en)} <small>[${getHeadGroupShortText(toHead.group)}]</small></div>`;
+              const crLine = `<div style="color:#B91C1C;">📤 <strong>${crDisp}:</strong> ${fromHead.icon} ${t(fromHead.bo, fromHead.en)} <small>[${getHeadGroupShortText(fromHead.group)}]</small></div>`;
+              return jvLabels.order === 'dr_first' ? `${drLine}${crLine}` : `${crLine}${drLine}`;
+            })()
+          }
+        </div>
+      </div>
+
+      <div class="ios-input-group">
+        <label class="ios-input-label">${t('གསལ་བཤད་ཐུང་ངུ།', 'Short Note (Optional)')}</label>
+        <input type="text" id="entryNote" class="ios-input" placeholder="${t('དཔེར་ན། ཁང་གླ་ནས་ཟས་སོང་ལ་སྤོ་ཞུ།', 'e.g., Adjusted from Rent to Food Expense')}" />
+      </div>
+      <input type="hidden" id="entryParty" value="" />
+
+      <button class="action-btn jv-btn" style="width:100%;padding:13px;font-size:15px;" onclick="saveNewTransaction()">
+        ✅ ${t('མཚུངས་ཁྲ་ཉར་ཚགས་བྱོས།', 'Save Entry')}
+      </button>
+    `;
+    return;
+  }
+
+  // Standard Receipt (➕ ཡོང་འབབ།) & Payment (➖ འགྲོ་སོང་།) Layout
+  // Notice: Every card in "Select Account Head" now displays its Head Group badge below!
+  const gridHeads =
+    mode === 'in'
+      ? state.accountHeads.filter(h => h.group === 'income' || h.group === 'party_jv')
+      : state.accountHeads.filter(h => h.group === 'expense' || h.group === 'party_jv');
+
+  const cashBankHeads = state.accountHeads.filter(h => h.group === 'cash_bank');
+  const otherHeads = state.accountHeads.filter(h => h.group !== 'cash_bank');
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">${headerTitle}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div class="segmented-bar" style="margin-bottom:10px;">
+      <button class="seg-btn ${mode === 'in' ? 'active' : ''}" onclick="switchModalMode('in')">➕ ${state.lang === 'en' ? 'In' : 'བྱུང་།'}</button>
+      <button class="seg-btn ${mode === 'out' ? 'active' : ''}" onclick="switchModalMode('out')">➖ ${state.lang === 'en' ? 'Out' : 'སོང་།'}</button>
+      <button class="seg-btn" onclick="switchModalMode('contra')">🔄 ${state.lang === 'en' ? 'Contra' : 'དངུལ་བཅུག་བཏོན།'}</button>
+      <button class="seg-btn" onclick="switchModalMode('jv')">📒 ${state.lang === 'en' ? 'JV' : 'མཚུངས་ཁྲ།'}</button>
+    </div>
+
+    <!-- Amount + Changeable Date Row (Validated against Accounting Period) -->
+    <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:8px;">
+      <div class="ios-input-group">
+        <label class="ios-input-label">${t('དངུལ་འབོར།', 'Amount')}</label>
+        <input type="number" id="entryAmount" class="ios-input big-amount" placeholder="0" autofocus />
+      </div>
+      <div class="ios-input-group">
+        <label class="ios-input-label">📅 ${t('ཚེས་གྲངས།', 'Date')}</label>
+        <input
+          type="date"
+          id="entryDate"
+          class="ios-input"
+          style="font-size:13.5px;"
+          min="${state.periodFrom}"
+          max="${state.periodTo}"
+          value="${modalDateValue}"
+          onchange="onEntryDateInputChanged(this.value)"
+        />
+      </div>
+    </div>
+
+    ${periodWarningHtml}
+
+    ${(() => {
+      const primaryObj = getHead(modalPrimaryHeadId);
+      const isExp = mode === 'out' && primaryObj && primaryObj.group === 'expense';
+      const isIncome = mode === 'in' && primaryObj && primaryObj.group === 'income';
+      const step1Title =
+        mode === 'in'
+          ? (isIncome
+              ? `1️⃣ 🟢 ${t('རྩིས་འགོ་ནང་བྱུང་། (Cr.)', 'Received Under Head (Cr)')}`
+              : `1️⃣ 🤝 ${t('རྩིས་འགོ་ལ་བྱུང་། (Cr.)', 'From Party / Advance (Cr)')}`)
+          : isExp
+          ? `1️⃣ 🔴 ${t('རྩིས་འགོ་གང་ནས། (Dr.)', 'Expense Head (Dr)')}`
+          : `1️⃣ 🤝 ${t('རྩིས་འགོ་ལ་བཏང་། (Dr.)', 'To Head / Party (Dr)')}`;
+
+      const step2Title =
+        mode === 'in'
+          ? `2️⃣ 📥 ${t('བརྒྱུད་འབྱོར། (Dr.) (ལག་དངུལ་/དངུལ་ཁང་)', 'Received Via / Cash & Bank (Dr)')}`
+          : `2️⃣ 📤 ${t('བརྒྱུད་བཏང་། (Cr.) (ལག་དངུལ་/དངུལ་ཁང་)', 'Paid Through / Cash & Bank (Cr)')}`;
+
+      return `
+      <!-- Step 1: Primary Account Head Grid (Shows Head Group Badge below each Head!) -->
+      <div class="ios-section-title" style="margin-top:4px;">
+        <span>${step1Title}</span>
+        <button type="button" class="mini-btn" style="background:#FEF3C7;color:#881337;border-color:#F59E0B;" onclick="openCreateHeadModal('${mode === 'in' ? 'income' : 'expense'}')">
+          + ${t('རྩིས་འགོ་གསར་པ།', 'New Head')}
+        </button>
+      </div>
+
+      <div class="cat-grid">
+        ${gridHeads
+          .map(
+            c => `
+          <button type="button" class="cat-chip ${c.id === modalPrimaryHeadId ? 'selected' : ''}" onclick="selectModalPrimaryHead('${c.id}')">
+            <span class="cat-chip-icon">${c.icon}</span>
+            <span class="cat-chip-bo">${c.bo}</span>
+            <span class="cat-chip-en">${c.en}</span>
+            ${getHeadGroupBadgeHtml(c.group)}
+          </button>
+        `
+          )
+          .join('')}
+      </div>
+
+      <!-- Step 2: Payment Method OR Another Account Head (མཚུངས་ཁྲ། JV) -->
+      <div class="ios-input-group" style="border:1.5px solid #94A3B8;">
+        <label class="ios-input-label" style="color:#0F172A;">
+          ${step2Title}
+        </label>
+        <select id="entryPaymentHead" class="ios-input" onchange="selectModalPaymentHead(this.value)">
+          <optgroup label="${t('🏦 ལག་དངུལ་དང་དངུལ་ཁང་།', '🏦 Cash & Bank')}">
+            ${cashBankHeads
+              .map(
+                h => `
+              <option value="${h.id}" ${h.id === modalPaymentHeadId ? 'selected' : ''}>
+                ${h.icon} ${t(h.bo, h.en)} [${getHeadGroupShortText(h.group)}]
+              </option>
+            `
+              )
+              .join('')}
+          </optgroup>
+          <optgroup label="${t('📒 རྩིས་འགོ་གཞན་ནས་སྤོ་ཞུ། (མཚུངས་ཁྲ།)', '📒 Other Account Head (JV)')}">
+            ${otherHeads
+              .map(
+                h => `
+              <option value="${h.id}" ${h.id === modalPaymentHeadId ? 'selected' : ''}>
+                ${h.icon} ${t(h.bo, h.en)} [${getHeadGroupShortText(h.group)}]
+              </option>
+            `
+              )
+              .join('')}
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- Live Simple From -> To Preview Box -->
+      <div class="double-entry-preview">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-weight:800;color:#1E3A8A;">⚡ ${t('རྩིས་འགོ་འགྲོ་སྟངས།', 'Account Flow')}</span>
+          <span class="voucher-tag ${resolved.voucherType}">${getVoucherDisplayBadge(resolved.voucherType)}</span>
+        </div>
+        ${(() => {
+          const flowLabels = getVoucherDynamicHeadLabels(resolved);
+          const drDisp = getHeadDisplayLabel(flowLabels.drLabelBo, flowLabels.drLabelEn, true);
+          const crDisp = getHeadDisplayLabel(flowLabels.crLabelBo, flowLabels.crLabelEn, false);
+          const drLine = `<div style="color:#15803D;font-weight:700;">📥 <strong>${drDisp}:</strong> ${toHead.icon} ${t(toHead.bo, toHead.en)} <small>[${getHeadGroupShortText(toHead.group)}]</small></div>`;
+          const crLine = `<div style="color:#B91C1C;font-weight:700;">📤 <strong>${crDisp}:</strong> ${fromHead.icon} ${t(fromHead.bo, fromHead.en)} <small>[${getHeadGroupShortText(fromHead.group)}]</small></div>`;
+          return flowLabels.order === 'dr_first' ? `${drLine}${crLine}` : `${crLine}${drLine}`;
+        })()}
+      </div>
+      `;
+    })()}
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('མི་སྣའམ་སྦྱིན་བདག་གི་མིང་།', 'Party / Donor / Person Name')}</label>
+      <input type="text" id="entryParty" class="ios-input" placeholder="${t('དཔེར་ན། བསྟན་འཛིན་ལགས། / Tenzin', 'e.g., Tenzin / Sponsor Name')}" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('གསལ་བཤད་ཐུང་ངུ།', 'Short Note')}</label>
+      <input type="text" id="entryNote" class="ios-input" placeholder="${t('གསལ་བཤད།...', 'Optional note...')}" />
+    </div>
+
+    <button class="action-btn ${mode === 'in' ? 'cash-in' : 'cash-out'}" style="width:100%;padding:13px;font-size:15px;" onclick="saveNewTransaction()">
+      ✅ ${t('རྩིས་དེབ་ནང་ཉར་ཚགས་བྱོས།', 'Save Entry')}
+    </button>
+  `;
+}
+
+function preserveAndReRenderEntryModal(callback) {
+  const amountEl = document.getElementById('entryAmount');
+  const dateEl = document.getElementById('entryDate');
+  const partyEl = document.getElementById('entryParty');
+  const noteEl = document.getElementById('entryNote');
+  const savedAmt = amountEl ? amountEl.value : '';
+  const savedDate = dateEl ? dateEl.value : modalDateValue;
+  const savedParty = partyEl ? partyEl.value : '';
+  const savedNote = noteEl ? noteEl.value : '';
+
+  modalDateValue = savedDate || getTodayStr();
+  callback();
+  renderEntryModalContent();
+
+  if (document.getElementById('entryAmount')) document.getElementById('entryAmount').value = savedAmt;
+  if (document.getElementById('entryDate')) document.getElementById('entryDate').value = modalDateValue;
+  if (document.getElementById('entryParty')) document.getElementById('entryParty').value = savedParty;
+  if (document.getElementById('entryNote')) document.getElementById('entryNote').value = savedNote;
+}
+
+function switchModalMode(newMode) {
+  preserveAndReRenderEntryModal(() => {
+    const keepDate = modalDateValue;
+    openEntryModal(newMode);
+    modalDateValue = keepDate;
+  });
+}
+
+function selectModalPrimaryHead(headId) {
+  preserveAndReRenderEntryModal(() => {
+    modalPrimaryHeadId = headId;
+  });
+}
+
+function selectModalPaymentHead(headId) {
+  preserveAndReRenderEntryModal(() => {
+    modalPaymentHeadId = headId;
+  });
+}
+
+function saveNewTransaction() {
+  const amount = Number(document.getElementById('entryAmount').value);
+  if (!amount || amount <= 0) {
+    showToast(t('དངུལ་འབོར་འབྲི་རོགས་གནང་།', 'Please enter a valid amount'));
+    return;
+  }
+
+  if (modalPrimaryHeadId === modalPaymentHeadId) {
+    showToast(t('རྩིས་འགོ་གཉིས་ཁག་ཁག་འདེམས་རོགས།', 'Please pick two different Account Heads'));
+    return;
+  }
+
+  const dateEl = document.getElementById('entryDate');
+  const chosenDate = dateEl && dateEl.value ? dateEl.value : getTodayStr();
+
+  // STRICT PERIOD VALIDATION: Block entry if date is outside [state.periodFrom, state.periodTo]
+  if (!isDateWithinPeriod(chosenDate)) {
+    const warnEl = document.getElementById('periodValidationBanner');
+    if (warnEl) warnEl.style.display = 'block';
+    showToast(
+      t(
+        `⚠️ ཚེས་གྲངས་ (${chosenDate}) འདི་རྩིས་དུས་ (${state.periodFrom} – ${state.periodTo}) ཀྱི་ཕྱི་ལ་རེད་འདུག`,
+        `⚠️ Date (${chosenDate}) is outside the selected period (${state.periodFrom} – ${state.periodTo})!`
+      )
+    );
+    return;
+  }
+
+  const partyEl = document.getElementById('entryParty');
+  const noteEl = document.getElementById('entryNote');
+  const partyRaw = partyEl ? partyEl.value.trim() : '';
+  const noteRaw = noteEl ? noteEl.value.trim() : '';
+
+  const resolved = resolveDoubleEntry(modalEntryMode, modalPrimaryHeadId, modalPaymentHeadId);
+  const fromHead = getHead(resolved.crHeadId);
+  const toHead = getHead(resolved.drHeadId);
+
+  const defaultTitleBo =
+    resolved.voucherType === 'JV'
+      ? `${toHead.bo} | ${fromHead.bo} (མཚུངས་ཁྲ།)`
+      : resolved.voucherType === 'CONTRA'
+      ? `${fromHead.bo} ནས་ ${toHead.bo} ལ་དངུལ་སྤོ།`
+      : toHead.bo;
+
+  const defaultTitleEn =
+    resolved.voucherType === 'JV'
+      ? `Dr: ${toHead.en} | Cr: ${fromHead.en} (JV)`
+      : resolved.voucherType === 'CONTRA'
+      ? `From ${fromHead.en} → To ${toHead.en} (Contra)`
+      : toHead.en;
+
+  const dynLabels = getVoucherDynamicHeadLabels(resolved);
+  const defaultNoteBo =
+    dynLabels.order === 'dr_first'
+      ? `${dynLabels.drLabelBo} ${toHead.bo} | ${dynLabels.crLabelBo} ${fromHead.bo}`
+      : `${dynLabels.crLabelBo} ${fromHead.bo} → ${dynLabels.drLabelBo} ${toHead.bo}`;
+
+  const newTx = {
+    id: 'tx_' + Date.now(),
+    bookId: state.activeBookId,
+    voucherType: resolved.voucherType,
+    primaryHeadId: modalPrimaryHeadId,
+    paymentHeadId: modalPaymentHeadId,
+    drHeadId: resolved.drHeadId,
+    crHeadId: resolved.crHeadId,
+    amount,
+    partyBo: partyRaw || defaultTitleBo,
+    partyEn: partyRaw || defaultTitleEn,
+    noteBo: noteRaw || defaultNoteBo,
+    noteEn: noteRaw || `From ${fromHead.en} → To ${toHead.en}`,
+    date: chosenDate,
+    receiptNo: 'TAB-' + Math.floor(1000 + Math.random() * 9000)
+  };
+
+  state.transactions.unshift(newTx);
+  state.selectedReceiptTxId = newTx.id;
+  saveState();
+  closeModal();
+  renderAll();
+  showToast(t('རྩིས་ཐོ་ཉར་ཚགས་ཟིན་པ།', 'Entry saved!'));
+}
+
+// ============================================================================
+// Export & Install Data on Another Phone + Cloud Sync Modal (☁️ སྤོ་བཤུགས།)
+// ============================================================================
+function openBackupAndCloudModal() {
+  const sheet = document.getElementById('modalSheet');
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" style="color:#0369A1;">
+        📲 ${t('ཁ་པར་གཞན་ནང་སྤོ་བཤུགས་དང་སྤྲིན་གསོག་མཉམ་སྤྱོད།', 'Phone Transfer & Cloud Sync')}
+      </div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <!-- Section 1: Export & Install on Another Phone (File or Code) -->
+    <div class="report-card" style="background:#F0F9FF;border:1.5px solid #7DD3FC;margin-bottom:12px;">
+      <div style="font-size:13.5px;font-weight:800;color:#0C4A6E;margin-bottom:4px;">
+        1️⃣ ${t('ཁ་པར་གཞན་ནང་རྩིས་དེབ་ཆ་ཚང་སྤོ་བཤུགས།', 'Export & Install on Another Phone')}
+      </div>
+      <div style="font-size:11.5px;color:#334155;margin-bottom:10px;line-height:1.5;">
+        ${t(
+          'རྩིས་དེབ་དང་། རྩིས་འགོ། རྩིས་ཐོ་ཡོངས་རྫོགས་ཡིག་ཆ་ (.json) ཐོག་ཕབ་ལེན་བྱས་ནས་ WhatsApp བརྒྱུད་ཁ་པར་གཞན་ནང་ནང་འདྲེན་བྱེད་ཐུབ།',
+          'Download a full backup file (.json) of all Books, Account Heads & Entries, send it via WhatsApp/AirDrop, and import it on your new phone!'
+        )}
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <button type="button" class="action-btn contra-btn" onclick="exportFullBackupFile()">
+          📤 ${t('ཕྱིར་འདྲེན། (Export File)', 'Export Backup')}
+        </button>
+        <button type="button" class="action-btn cash-in" onclick="document.getElementById('backupFileInput').click()">
+          📥 ${t('ནང་འདྲེན། (Import File)', 'Import Backup')}
+        </button>
+      </div>
+      <input type="file" id="backupFileInput" accept=".json,application/json" style="display:none;" onchange="importFullBackupFile(event)" />
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button type="button" class="mini-btn" style="padding:7px;font-size:11.5px;" onclick="copyBackupCodeToClipboard()">
+          📋 ${t('ངོ་བཤུས་ཨང་རྟགས་ལེན།', 'Copy Backup Text')}
+        </button>
+        <button type="button" class="mini-btn" style="padding:7px;font-size:11.5px;" onclick="pasteBackupCodePrompt()">
+          📲 ${t('ཨང་རྟགས་ནང་འདྲེན།', 'Restore from Text')}
+        </button>
+      </div>
+    </div>
+
+    <!-- Section 2: Cloud Sync (Firebase / Cloud DB) -->
+    <div class="report-card" style="background:#FFFBEB;border:1.5px solid #FCD34D;">
+      <div style="font-size:13.5px;font-weight:800;color:#78350F;margin-bottom:4px;">
+        2️⃣ ☁️ ${t('སྤྲིན་གསོག་རང་འགུལ་མཉམ་སྤྱོད།', 'Cloud Sync & Sharing Setup')}
+      </div>
+      <div style="font-size:11.5px;color:#475569;margin-bottom:8px;line-height:1.5;">
+        ${t(
+          'རིན་མེད་ Firebase Realtime Database URL འདིར་བཅུག་ན་ཁ་པར་གཉིས་གསུམ་ནང་དུས་གཅིག་ལ་རྩིས་དེབ་མཉམ་སྤྱོད་དང་སྤྲིན་གསོག་ནང་ཉར་ཚགས་བྱེད་ཐུབ།',
+          'Paste a free Firebase Realtime Database URL (e.g. https://your-project.firebaseio.com) and Sync Room Name to sync live across multiple phones!'
+        )}
+      </div>
+
+      <div class="ios-input-group" style="padding:8px 10px;margin-bottom:8px;">
+        <label class="ios-input-label">🌐 ${t('སྤྲིན་གསོག་དྲ་ཚིགས། (Database URL)', 'Cloud Database URL (Firebase Realtime DB)')}</label>
+        <input type="text" id="cloudUrlInput" class="ios-input" style="font-size:12.5px;" placeholder="https://your-app-default-rtdb.firebaseio.com" value="${state.cloudSyncUrl || ''}" />
+      </div>
+
+      <div class="ios-input-group" style="padding:8px 10px;margin-bottom:10px;">
+        <label class="ios-input-label">🔑 ${t('མཉམ་སྤྱོད་གསང་ཨང་། (Sync Key / Room ID)', 'Sync Room ID / Secret Key')}</label>
+        <input type="text" id="cloudKeyInput" class="ios-input" style="font-size:12.5px;" placeholder="e.g., monastery_treasury_2026" value="${state.cloudSyncKey || ''}" />
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button type="button" class="action-btn" style="background:#881337;color:#FEF08A;font-size:12px;" onclick="cloudPushData()">
+          ☁️⬆️ ${t('སྤྲིན་གསོག་ཏུ་ཡར་འཇུག', 'Push to Cloud')}
+        </button>
+        <button type="button" class="action-btn" style="background:#1E293B;color:#FFF;font-size:12px;" onclick="cloudPullData()">
+          ☁️⬇️ ${t('སྤྲིན་གསོག་ནས་མར་ལེན།', 'Pull from Cloud')}
+        </button>
+      </div>
+    </div>
+  `;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function exportFullBackupFile() {
+  const backupPayload = {
+    app: 'Tibetan Account Book',
+    exportedAt: new Date().toISOString(),
+    stateData: state
+  };
+  const jsonStr = JSON.stringify(backupPayload, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Tibetan_Account_Book_Full_Backup_${getTodayStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(t('རྩིས་དེབ་ཆ་ཚང་ཕྱིར་འདྲེན་ཟིན་པ། ཁ་པར་གཞན་ནང་བསྐུར་ཐུབ།', 'Full backup file exported!'));
+}
+
+function importFullBackupFile(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      const incomingState = parsed.stateData || parsed;
+      if (!incomingState.books || !incomingState.transactions) {
+        showToast(t('ཡིག་ཆ་འདི་རྩིས་དེབ་ཀྱི་ཡིག་ཆ་མ་རེད་འདུག', 'Invalid backup file format'));
+        return;
+      }
+      state = {
+        ...DEFAULT_STATE,
+        ...incomingState
+      };
+      saveState();
+      closeModal();
+      renderAll();
+      showToast(t('✅ ཁ་པར་གཞན་གྱི་རྩིས་དེབ་ཆ་ཚང་ནང་འདྲེན་ཟིན་པ།', '✅ All books, heads & entries restored!'));
+    } catch (err) {
+      showToast(t('ཡིག་ཆ་ཀློག་ཐུབ་མ་སོང་།', 'Could not read backup file'));
+    }
+  };
+  reader.readAsText(file);
+}
+
+function copyBackupCodeToClipboard() {
+  const jsonStr = JSON.stringify(state);
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(jsonStr).catch(() => {});
+  }
+  showToast(t('📋 རྩིས་དེབ་ཆ་ཚང་ངོ་བཤུས་བླངས་ཟིན། WhatsApp ནང་བསྐུར་ཐུབ།', '📋 Full data copied! Send via WhatsApp to new phone.'));
+}
+
+function pasteBackupCodePrompt() {
+  const raw = window.prompt(
+    t(
+      'ཁ་པར་རྙིང་པ་ནས་ངོ་བཤུས་བླངས་པའི་རྩིས་དེབ་ཨང་རྟགས་ (JSON) འདིར་སྦྱར་རོགས།:',
+      'Paste the Backup JSON text copied from your other phone:'
+    )
+  );
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw);
+    const incomingState = parsed.stateData || parsed;
+    if (!incomingState.books || !incomingState.transactions) {
+      showToast(t('ཨང་རྟགས་ནོར་འདུག', 'Invalid backup text'));
+      return;
+    }
+    state = { ...DEFAULT_STATE, ...incomingState };
+    saveState();
+    closeModal();
+    renderAll();
+    showToast(t('✅ རྩིས་དེབ་ཆ་ཚང་ནང་འདྲེན་ཟིན་པ།', '✅ Backup restored successfully!'));
+  } catch (e) {
+    showToast(t('ཨང་རྟགས་ནོར་འདུག', 'Invalid JSON backup code'));
+  }
+}
+
+async function cloudPushData() {
+  const urlInput = document.getElementById('cloudUrlInput');
+  const keyInput = document.getElementById('cloudKeyInput');
+  const baseUrl = (urlInput ? urlInput.value.trim() : '').replace(/\/$/, '');
+  const syncKey = (keyInput ? keyInput.value.trim() : '').replace(/[^a-zA-Z0-9_-]/g, '');
+
+  state.cloudSyncUrl = baseUrl;
+  state.cloudSyncKey = syncKey;
+  saveState();
+
+  if (!baseUrl || !syncKey) {
+    showToast(t('སྤྲིན་གསོག་དྲ་ཚིགས་དང་མཉམ་སྤྱོད་གསང་ཨང་གཉིས་ཀ་འབྲི་རོགས།', 'Please enter both Cloud URL and Sync Key'));
+    return;
+  }
+
+  try {
+    const endpoint = `${baseUrl}/tibetan_account_book/${syncKey}.json`;
+    const res = await fetch(endpoint, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updatedAt: new Date().toISOString(), stateData: state })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    showToast(t('☁️✅ སྤྲིན་གསོག་ཏུ་རྩིས་དེབ་ཆ་ཚང་ཉར་ཚགས་ཟིན་པ།', '☁️✅ Synced to Cloud successfully!'));
+  } catch (e) {
+    showToast(t('སྤྲིན་གསོག་དང་མཐུད་ཐུབ་མ་སོང་། དྲ་ཚིགས་ཞིབ་བཤེར་གནང་རོགས།', 'Could not reach Cloud URL. Check URL/network.'));
+  }
+}
+
+async function cloudPullData() {
+  const urlInput = document.getElementById('cloudUrlInput');
+  const keyInput = document.getElementById('cloudKeyInput');
+  const baseUrl = (urlInput ? urlInput.value.trim() : '').replace(/\/$/, '');
+  const syncKey = (keyInput ? keyInput.value.trim() : '').replace(/[^a-zA-Z0-9_-]/g, '');
+
+  state.cloudSyncUrl = baseUrl;
+  state.cloudSyncKey = syncKey;
+  saveState();
+
+  if (!baseUrl || !syncKey) {
+    showToast(t('སྤྲིན་གསོག་དྲ་ཚིགས་དང་མཉམ་སྤྱོད་གསང་ཨང་གཉིས་ཀ་འབྲི་རོགས།', 'Please enter both Cloud URL and Sync Key'));
+    return;
+  }
+
+  try {
+    const endpoint = `${baseUrl}/tibetan_account_book/${syncKey}.json`;
+    const res = await fetch(endpoint);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data || !data.stateData) {
+      showToast(t('མཉམ་སྤྱོད་གསང་ཨང་འདིའི་ཐོག་རྩིས་དེབ་མི་འདུག', 'No cloud backup found for this Sync Key'));
+      return;
+    }
+    state = { ...DEFAULT_STATE, ...data.stateData, cloudSyncUrl: baseUrl, cloudSyncKey: syncKey };
+    saveState();
+    closeModal();
+    renderAll();
+    showToast(t('☁️✅ སྤྲིན་གསོག་ནས་རྩིས་དེབ་ཆ་ཚང་ཕབ་ལེན་ཟིན་པ།', '☁️✅ Restored latest data from Cloud!'));
+  } catch (e) {
+    showToast(t('སྤྲིན་གསོག་ནས་ལེན་ཐུབ་མ་སོང་།', 'Could not pull from Cloud URL.'));
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Edit Opening Balances Modal (⚙️ ཐོག་མའི་ལྷག་མ་བཟོ་བཅོས།)
+// ----------------------------------------------------------------------------
+function openOpeningBalanceModal() {
+  const sheet = document.getElementById('modalSheet');
+  const cashBankAndParty = state.accountHeads.filter(
+    h => h.group === 'cash_bank' || h.group === 'party_jv'
+  );
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">🏁 ${t('ཐོག་མའི་ལྷག་མ་བཟོ་བཅོས།', 'Set Opening Balances')}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div style="font-size:12px;color:#6C6C70;margin-bottom:10px;">
+      ${t(
+        'རྒྱུ་དངོས་དང་བསྡུ་དགོས་ (Asset/Dr) ལ་ + དང་། སྤྲོད་དགོས་བུ་ལོན་ (Liability/Cr) ལ་ - བཀོལ་ནས་ཐོག་མའི་ལྷག་མ་འགོད་ཐུབ།',
+        'Use positive (+) for Asset/Receivable (Dr) and negative (-) for Payable/Liability (Cr).'
+      )}
+    </div>
+
+    ${cashBankAndParty
+      .map(
+        h => `
+      <div class="ios-input-group" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;">
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:700;">${h.icon} ${t(h.bo, h.en)}</div>
+          <div style="font-size:10px;color:#6C6C70;">[${getHeadGroupShortText(h.group)}]</div>
+        </div>
+        <input
+          type="number"
+          class="ios-input opening-bal-input"
+          data-head-id="${h.id}"
+          value="${getHeadOpeningBalance(h.id)}"
+          style="width:120px;text-align:right;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;"
+        />
+      </div>
+    `
+      )
+      .join('')}
+
+    <button class="action-btn cash-in" style="width:100%;padding:13px;margin-top:8px;" onclick="saveOpeningBalances()">
+      ✅ ${t('ཐོག་མའི་ལྷག་མ་ཉར་ཚགས་བྱོས།', 'Save Opening Balances')}
+    </button>
+  `;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function saveOpeningBalances() {
+  const book = getActiveBook();
+  if (!book.openingBalances) book.openingBalances = {};
+  const inputs = document.querySelectorAll('.opening-bal-input');
+  inputs.forEach(inp => {
+    const headId = inp.getAttribute('data-head-id');
+    const val = Number(inp.value) || 0;
+    book.openingBalances[headId] = val;
+  });
+  saveState();
+  closeModal();
+  renderAll();
+  showToast(t('ཐོག་མའི་ལྷག་མ་ཉར་ཚགས་ཟིན་པ།', 'Opening balances updated!'));
+}
+
+// ----------------------------------------------------------------------------
+// Create New Account Head Modal (+ རྩིས་འགོ་གསར་པ་བཟོས།) with Group-Specific Examples
+// ----------------------------------------------------------------------------
+function getHeadGroupExamples(group) {
+  if (group === 'cash_bank') {
+    return {
+      boPlaceholder: 'དཔེར་ན། SBI དངུལ་ཁང་། / PNB དངུལ་ཁང་།',
+      enPlaceholder: 'e.g., SBI Bank A/c / PNB Bank A/c',
+      defaultIcon: '🏦'
+    };
+  }
+  if (group === 'party_jv') {
+    return {
+      boPlaceholder: 'དཔེར་ན། ལུ་དྷི་ཡ་ན་རྐང་ཤུབས་ལ། / བཀྲ་ཤིས་སྔ་འདོན།',
+      enPlaceholder: 'e.g., Ludhiana Socks Supplier / Tashi Advance',
+      defaultIcon: '🤝'
+    };
+  }
+  if (group === 'income') {
+    return {
+      boPlaceholder: 'དཔེར་ན། དགུན་ཚོང་བལ་གོས་ཚོང་འབབ། / མཆོད་མེའི་ཞལ་འདེབས།',
+      enPlaceholder: 'e.g., Winter Sweater Sales / Butter Lamp Donation',
+      defaultIcon: '🛍️'
+    };
+  }
+  return {
+    boPlaceholder: 'དཔེར་ན། ཚོང་ཁང་ཁང་གླ། / སྤྱི་ཐབ་ཟས་སོང་།',
+    enPlaceholder: 'e.g., Shop Stall Rent / Kitchen Food Expense',
+    defaultIcon: '🍲'
+  };
+}
+
+function onNewHeadGroupChange(group) {
+  const ex = getHeadGroupExamples(group);
+  const boEl = document.getElementById('newHeadBo');
+  const enEl = document.getElementById('newHeadEn');
+  const iconEl = document.getElementById('newHeadIcon');
+  if (boEl) boEl.placeholder = ex.boPlaceholder;
+  if (enEl) enEl.placeholder = ex.enPlaceholder;
+  if (iconEl) iconEl.value = ex.defaultIcon;
+}
+
+function toggleOpeningSideVisibility(val) {
+  const sideGroup = document.getElementById('newHeadOpenSideGroup');
+  const container = document.getElementById('newHeadOpeningRow');
+  const num = Number(val) || 0;
+  if (num > 0) {
+    if (sideGroup) sideGroup.style.display = 'block';
+    if (container) container.style.gridTemplateColumns = '1.2fr 1fr';
+  } else {
+    if (sideGroup) sideGroup.style.display = 'none';
+    if (container) container.style.gridTemplateColumns = '1fr';
+  }
+}
+
+function openCreateHeadModal(defaultGroup = 'expense') {
+  const sheet = document.getElementById('modalSheet');
+  const ex = getHeadGroupExamples(defaultGroup);
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">🗂️ ${t('རྩིས་འགོ་གསར་པ་བཟོས།', 'Create New Account Head')}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་འགོའི་དབྱེ་བ།', 'Select Account Head Group')}</label>
+      <select id="newHeadGroup" class="ios-input" onchange="onNewHeadGroupChange(this.value)">
+        <option value="expense" ${defaultGroup === 'expense' ? 'selected' : ''}>🔴 ${t('འགྲོ་སོང་རྩིས་འགོ།', 'Expense Head')}</option>
+        <option value="income" ${defaultGroup === 'income' ? 'selected' : ''}>🟢 ${t('ཡོང་འབབ་རྩིས་འགོ།', 'Income Head')}</option>
+        <option value="cash_bank" ${defaultGroup === 'cash_bank' ? 'selected' : ''}>🏦 ${t('ལག་དངུལ་དང་དངུལ་ཁང་།', 'Cash / Bank')}</option>
+        <option value="party_jv" ${defaultGroup === 'party_jv' ? 'selected' : ''}>🤝 ${t('མི་སྣ་དང་སྔ་འདོན་རྩིས་འགོ།', 'Party / Advance')}</option>
+      </select>
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་འགོའི་མིང་ (བོད་ཡིག)', 'Account Head Name in Tibetan')}</label>
+      <input type="text" id="newHeadBo" class="ios-input" placeholder="${ex.boPlaceholder}" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་འགོའི་མིང་ (English)', 'Account Head Name in English')}</label>
+      <input type="text" id="newHeadEn" class="ios-input" placeholder="${ex.enPlaceholder}" />
+    </div>
+
+    <div id="newHeadOpeningRow" style="display:grid;grid-template-columns:1fr;gap:8px;">
+      <div class="ios-input-group">
+        <label class="ios-input-label">${t('ཐོག་མའི་ལྷག་མ།', 'Opening Balance')}</label>
+        <input
+          type="number"
+          id="newHeadOpening"
+          class="ios-input"
+          placeholder="0"
+          value=""
+          oninput="toggleOpeningSideVisibility(this.value)"
+        />
+      </div>
+      <div class="ios-input-group" id="newHeadOpenSideGroup" style="display:none;">
+        <label class="ios-input-label">${t('ལྷག་ཤོག་ཕྱོགས།', 'Opening Side')}</label>
+        <select id="newHeadOpenSide" class="ios-input" style="font-size:13px;">
+          <option value="dr">🟢 ${t('རྒྱུ་དངོས་/བསྡུ་དགོས།', 'Dr Asset / Receivable')}</option>
+          <option value="cr">🟣 ${t('སྤྲོད་དགོས་བུ་ལོན།', 'Cr Liability / Payable')}</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('མཚོན་རྟགས།', 'Pick an Icon')}</label>
+      <select id="newHeadIcon" class="ios-input">
+        <option value="🏦" ${ex.defaultIcon === '🏦' ? 'selected' : ''}>🏦 ${t('དངུལ་ཁང་།', 'Bank / Institution')}</option>
+        <option value="🤝" ${ex.defaultIcon === '🤝' ? 'selected' : ''}>🤝 ${t('མི་སྣ་དང་སྔ་འདོན།', 'Party / Advance / Loan')}</option>
+        <option value="🛍️" ${ex.defaultIcon === '🛍️' ? 'selected' : ''}>🛍️ ${t('ཚོང་འབབ།', 'Shop / Sales')}</option>
+        <option value="🍲" ${ex.defaultIcon === '🍲' ? 'selected' : ''}>🍲 ${t('ཟས་སོང་དང་སྤྱི་ཐབ།', 'Kitchen / Food')}</option>
+        <option value="🙏" ${ex.defaultIcon === '🙏' ? 'selected' : ''}>🙏 ${t('ཞལ་འདེབས།', 'Donation / Offering')}</option>
+        <option value="🏢" ${ex.defaultIcon === '🏢' ? 'selected' : ''}>🏢 ${t('ཁང་གླ།', 'Rent / Building')}</option>
+        <option value="🪔" ${ex.defaultIcon === '🪔' ? 'selected' : ''}>🪔 ${t('མཆོད་མེ་དང་སྐུ་རིམ།', 'Butter Lamp / Ritual')}</option>
+        <option value="📌" ${ex.defaultIcon === '📌' ? 'selected' : ''}>📌 ${t('སྤྱིར་བཏང་།', 'Standard Pin')}</option>
+      </select>
+    </div>
+
+    <button class="action-btn cash-in" style="width:100%;padding:13px;" onclick="saveNewAccountHead()">
+      ✅ ${t('རྩིས་འགོ་གསར་པ་ཉར་ཚགས་བྱོས།', 'Save Account Head')}
+    </button>
+  `;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function saveNewAccountHead() {
+  const group = document.getElementById('newHeadGroup').value;
+  const bo = document.getElementById('newHeadBo').value.trim();
+  const en = document.getElementById('newHeadEn').value.trim();
+  const icon = document.getElementById('newHeadIcon').value;
+  const openingRaw = Math.abs(Number(document.getElementById('newHeadOpening').value) || 0);
+  const openSideEl = document.getElementById('newHeadOpenSide');
+  const openSide = openSideEl ? openSideEl.value : 'dr';
+  const openingVal = openSide === 'cr' ? -openingRaw : openingRaw;
+
+  if (!bo && !en) {
+    showToast(t('རྩིས་འགོའི་མིང་འབྲི་རོགས།', 'Please enter an Account Head name'));
+    return;
+  }
+
+  const newHead = {
+    id: 'head_' + Date.now(),
+    group,
+    icon,
+    bo: bo || en,
+    en: en || bo
+  };
+
+  state.accountHeads.push(newHead);
+  if (openingVal !== 0) {
+    const book = getActiveBook();
+    book.openingBalances[newHead.id] = openingVal;
+  }
+  saveState();
+  closeModal();
+  renderAll();
+  showToast(t('རྩིས་འགོ་གསར་པ་བཟོས་ཟིན།', 'New Account Head added!'));
+}
+
+// ----------------------------------------------------------------------------
+// Party Khata & WhatsApp Reminders
+// ----------------------------------------------------------------------------
+function sendWhatsAppReminder(khataId) {
+  const item = state.khataList.find(k => k.id === khataId);
+  if (!item) return;
+  const book = getActiveBook();
+  const msg = `༄༅། །བཀྲ་ཤིས་བདེ་ལེགས། ${item.nameBo} ལགས།\n${book.bo} (${book.en}) ནས་དྲན་སྐུལ་ཞུ་རྒྱུར། ཁྱེད་ཀྱི་རྩིས་ཐོའི་ལྷག་མ་ ${formatMoney(item.amount)} (${item.noteBo}) བསྡད་འདུག་ན། སྟབས་བདེ་བྱུང་མཚམས་གནང་རོགས་ཞུ། ཐུགས་རྗེ་ཆེ། 🙏\n---\nHello ${item.nameEn}, gentle reminder from ${book.en}: your pending balance is ${formatMoney(item.amount)}. Thank you!`;
+
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(msg).catch(() => {});
+  }
+
+  const modal = document.getElementById('modalBackdrop');
+  const sheet = document.getElementById('modalSheet');
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">💬 ${t('WhatsApp དྲན་སྐུལ་འཕྲིན་ཐུང་།', 'WhatsApp Payment Reminder')}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="ios-input-group" style="background:#DCFCE7;border-color:#86EFAC;">
+      <div class="ios-input-label" style="color:#166534;">${t('རང་འགུལ་བོད་ཨིན་འཕྲིན་ཐུང་གྲ་སྒྲིག་ཟིན་པ།', 'Auto-Generated Tibetan + English Message')}</div>
+      <textarea id="waMsgBox" class="ios-input" rows="6" style="font-size:13px;line-height:1.55;">${msg}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="action-btn cash-in" style="flex:1;" onclick="openExternalWhatsApp()">
+        📲 ${t('WhatsApp ནང་གཏོང་།', 'Send in WhatsApp')}
+      </button>
+      <button class="action-btn" style="flex:1;background:#1E293B;color:#FFF;" onclick="copyWaMessage()">
+        📋 ${t('ངོ་བཤུས་ལེན།', 'Copy Text')}
+      </button>
+    </div>
+  `;
+  modal.classList.add('open');
+}
+
+function copyWaMessage() {
+  const box = document.getElementById('waMsgBox');
+  if (box && navigator.clipboard) {
+    navigator.clipboard.writeText(box.value);
+  }
+  closeModal();
+  showToast(t('འཕྲིན་ཐུང་ངོ་བཤུས་བླངས་ཟིན།', 'Copied to clipboard!'));
+}
+
+function openExternalWhatsApp() {
+  const box = document.getElementById('waMsgBox');
+  const text = encodeURIComponent(box ? box.value : '');
+  window.open(`https://wa.me/?text=${text}`, '_blank');
+  closeModal();
+}
+
+function settleKhataItem(khataId) {
+  const idx = state.khataList.findIndex(k => k.id === khataId);
+  if (idx === -1) return;
+  const item = state.khataList[idx];
+
+  const isReceive = item.type === 'receive';
+  const entryDate = isDateWithinPeriod(getTodayStr()) ? getTodayStr() : state.periodTo;
+
+  state.transactions.unshift({
+    id: 'tx_' + Date.now(),
+    bookId: state.activeBookId,
+    voucherType: isReceive ? 'RECEIPT' : 'PAYMENT',
+    primaryHeadId: 'party_advance',
+    paymentHeadId: 'head_cash',
+    drHeadId: isReceive ? 'head_cash' : 'party_advance',
+    crHeadId: isReceive ? 'party_advance' : 'head_cash',
+    amount: item.amount,
+    partyBo: item.nameBo,
+    partyEn: item.nameEn,
+    noteBo: item.noteBo + ' (རྩིས་གཙང་།)',
+    noteEn: item.noteEn + ' (Settled)',
+    date: entryDate,
+    receiptNo: 'TAB-' + Math.floor(1000 + Math.random() * 9000)
+  });
+
+  state.khataList.splice(idx, 1);
+  saveState();
+  renderMainContent();
+  showToast(t('བུ་ལོན་རྩིས་གཙང་བཟོས་ཤིང་རྩིས་དེབ་ནང་བཅུག་ཟིན།', 'Settled & recorded in Cashbook!'));
+}
+
+function openKhataModal() {
+  const sheet = document.getElementById('modalSheet');
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">🤝 ${t('བུ་ལོན་ཐོ་འགོད་གསར་པ།', 'New Credit / Khata Entry')}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('བུ་ལོན་དབྱེ་བ།', 'Credit Type')}</label>
+      <select id="khataType" class="ios-input">
+        <option value="receive">📥 ${t('ཚུར་བསྡུ་དགོས་པ། (Customer Owes You)', 'To Receive (Customer Owes You)')}</option>
+        <option value="pay">📤 ${t('ཕར་སྤྲོད་དགོས་པ། (You Owe Supplier)', 'To Pay (You Owe Supplier)')}</option>
+      </select>
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('མི་སྣའི་མིང་།', 'Customer / Person Name')}</label>
+      <input type="text" id="khataName" class="ios-input" placeholder="${t('དཔེར་ན། བཀྲ་ཤིས་ལགས། / Tashi', 'e.g., Tashi Phuntsok')}" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('ཁ་པར་ཨང་གྲངས། (WhatsApp)', 'Phone / WhatsApp Number')}</label>
+      <input type="text" id="khataPhone" class="ios-input" placeholder="+91 98..." />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('དངུལ་འབོར།', 'Amount')}</label>
+      <input type="number" id="khataAmount" class="ios-input big-amount" placeholder="0" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('གསལ་བཤད།', 'Item / Reason')}</label>
+      <input type="text" id="khataNote" class="ios-input" placeholder="${t('དཔེར་ན། བལ་གོས་ལྷག་མ།', 'e.g., Winter sweater balance')}" />
+    </div>
+
+    <button class="action-btn cash-in" style="width:100%;padding:13px;background:#881337;" onclick="saveKhataEntry()">
+      ✅ ${t('བུ་ལོན་རྩིས་དེབ་ནང་ཉར་ཚགས་བྱོས།', 'Save Credit Entry')}
+    </button>
+  `;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function saveKhataEntry() {
+  const name = document.getElementById('khataName').value.trim();
+  const amount = Number(document.getElementById('khataAmount').value);
+  if (!name || !amount) {
+    showToast(t('མིང་དང་དངུལ་འབོར་འབྲི་རོགས།', 'Please enter name and amount'));
+    return;
+  }
+
+  const phone = document.getElementById('khataPhone').value.trim() || '+91 98000-00000';
+  const note = document.getElementById('khataNote').value.trim() || 'བུ་ལོན་ལྷག་མ། / Credit balance';
+  const type = document.getElementById('khataType').value;
+
+  state.khataList.unshift({
+    id: 'kh_' + Date.now(),
+    bookId: state.activeBookId,
+    nameBo: name,
+    nameEn: name,
+    phone,
+    type,
+    amount,
+    noteBo: note,
+    noteEn: note,
+    dueDate: getTodayStr()
+  });
+
+  saveState();
+  closeModal();
+  renderAll();
+  showToast(t('བུ་ལོན་ཐོ་འགོད་ཟིན་པ།', 'Customer credit saved!'));
+}
+
+function openNewBookModal(fromManage = false) {
+  const sheet = document.getElementById('modalSheet');
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">📘 ${t('རྩིས་དེབ་གསར་པ་བཟོས།', 'Create New Account Book')}</div>
+      <button class="sheet-close" onclick="${fromManage ? 'openManageBooksModal()' : 'closeModal()'}">✕</button>
+    </div>
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་དེབ་ཀྱི་མིང་ (བོད་ཡིག)', 'Book Name in Tibetan')}</label>
+      <input type="text" id="newBookBo" class="ios-input" placeholder="དཔེར་ན། དགུན་ཚོང་རྩིས་དེབ།" />
+    </div>
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་དེབ་ཀྱི་མིང་ (English)', 'Book Name in English')}</label>
+      <input type="text" id="newBookEn" class="ios-input" placeholder="e.g., Winter Sweater Market 2026" />
+    </div>
+    <div class="ios-input-group">
+      <label class="ios-input-label">💵 ${t('ལག་དངུལ་ཐོག་མའི་ལྷག་མ། (Opening Cash • Dr)', 'Opening Cash Balance (Asset Dr)')}</label>
+      <input type="number" id="newBookOpenCash" class="ios-input" value="0" oninput="updateNewBookCapitalPreview()" />
+    </div>
+    <div class="ios-input-group">
+      <label class="ios-input-label">🏦 ${t('དངུལ་ཁང་ཐོག་མའི་ལྷག་མ། (Opening Bank • Dr)', 'Opening Bank Balance (Asset Dr)')}</label>
+      <input type="number" id="newBookOpenBank" class="ios-input" value="0" oninput="updateNewBookCapitalPreview()" />
+    </div>
+
+    <div class="ios-input-group" style="background:#FFFBEB;border:1.5px solid #FCD34D;">
+      <div style="font-size:11.5px;font-weight:800;color:#881337;margin-bottom:2px;">
+        🏛️ ${t('ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ། (Auto-Created General Fund / Capital • Cr)', 'Auto-Created General Fund / Capital (Cr)')}
+      </div>
+      <div id="newBookCapitalPreview" style="font-size:15px;font-weight:900;color:#15803D;">
+        ${formatMoney(0)} Cr
+      </div>
+      <div style="font-size:10.5px;color:#475569;margin-top:2px;">
+        ${t(
+          'ལག་དངུལ་དང་དངུལ་ཁང་གི་ཐོག་མའི་ལྷག་མ་ (Dr) བསྡོམས་འབོར་དེ་རང་འགུལ་གྱིས་ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ་ (Cr) ནང་འགྲོ་གི་རེད།',
+          'Double-Entry: Dr Opening Cash & Bank = Cr Opening General Fund / Capital.'
+        )}
+      </div>
+    </div>
+
+    <button class="action-btn cash-in" style="width:100%;padding:13px;" onclick="saveNewBook(${fromManage})">
+      ➕ ${t('རྩིས་དེབ་གསར་སྣོན་བྱོས།', 'Create Account Book')}
+    </button>
+  `;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function updateNewBookCapitalPreview() {
+  const c = Number((document.getElementById('newBookOpenCash') || {}).value) || 0;
+  const b = Number((document.getElementById('newBookOpenBank') || {}).value) || 0;
+  const el = document.getElementById('newBookCapitalPreview');
+  if (el) {
+    el.textContent = `${formatMoney(c + b)} Cr`;
+  }
+}
+
+function saveNewBook(fromManage = false) {
+  const bo = document.getElementById('newBookBo').value.trim();
+  const en = document.getElementById('newBookEn').value.trim();
+  const openCash = Number(document.getElementById('newBookOpenCash').value) || 0;
+  const openBank = Number(document.getElementById('newBookOpenBank').value) || 0;
+  if (!bo && !en) {
+    showToast(t('རྩིས་དེབ་ཀྱི་མིང་འབྲི་རོགས།', 'Please enter a book name'));
+    return;
+  }
+  const id = 'book_' + Date.now();
+  state.books.push({
+    id,
+    bo: bo || en,
+    en: en || bo,
+    orgSealBo: (bo || en) + ' ཐམ་ག',
+    orgSealEn: (en || bo).toUpperCase(),
+    openingBalances: {
+      head_cash: openCash,
+      head_sbi: openBank
+    }
+  });
+  state.activeBookId = id;
+  saveState();
+  renderAll();
+  showToast(t('རྩིས་དེབ་གསར་པ་བཟོས་ཟིན།', 'New account book created!'));
+  if (fromManage) {
+    openManageBooksModal();
+  } else {
+    closeModal();
+  }
+}
+
+function closeModal() {
+  document.body.classList.remove('modal-printing-cashbook');
+  document.getElementById('modalBackdrop').classList.remove('open');
+}
+
+function changeLanguage(lang) {
+  state.lang = lang;
+  saveState();
+  renderAll();
+  showToast(
+    lang === 'bo'
+      ? 'བོད་ཡིག་ཁོ་ནར་བསྒྱུར་ཟིན།'
+      : lang === 'en'
+      ? 'Switched to English'
+      : 'བོད་ཨིན་སྐད་གཉིས་ཐོག་བསྒྱུར་ཟིན། (Bilingual Mode)'
+  );
+}
+
+function changeCurrency(curr) {
+  state.currency = curr;
+  saveState();
+  renderAll();
+}
+
+function changeBook(bookId) {
+  if (bookId === '__MANAGE_BOOKS__') {
+    const bookSelect = document.getElementById('bookSelect');
+    if (bookSelect) bookSelect.value = state.activeBookId;
+    openManageBooksModal();
+    return;
+  }
+  state.activeBookId = bookId;
+  saveState();
+  renderAll();
+}
+
+// ==========================================
+// ACCOUNT BOOK / COMPANY MANAGEMENT (EDIT & DELETE)
+// ==========================================
+function openManageBooksModal() {
+  const sheet = document.getElementById('modalSheet');
+  const booksHtml = state.books
+    .map(b => {
+      const isActive = b.id === state.activeBookId;
+      const txCount = state.transactions.filter(tx => tx.bookId === b.id).length;
+      const openCash = (b.openingBalances && b.openingBalances.head_cash) || 0;
+      const openBank = (b.openingBalances && b.openingBalances.head_sbi) || 0;
+      const canDelete = state.books.length > 1;
+
+      return `
+        <div style="background:#FFFFFF;border:${isActive ? '2px solid #881337' : '1px solid #CBD5E1'};border-radius:14px;padding:12px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;gap:6px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:170px;">
+              <div style="font-size:14.5px;font-weight:800;color:#0F172A;display:flex;align-items:center;gap:6px;">
+                <span>📘 ${b.bo}</span>
+                ${
+                  isActive
+                    ? `<span style="background:#DCFCE7;color:#166534;font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px;">
+                        ${t('🌟 ད་ལྟའི་རྩིས་དེབ།', 'Active Book')}
+                       </span>`
+                    : ''
+                }
+              </div>
+              <div style="font-size:12px;color:#64748B;font-weight:600;margin-top:2px;">
+                ${b.en}
+              </div>
+              ${
+                b.orgSealBo
+                  ? `<div style="font-size:10.5px;color:#94A3B8;margin-top:2px;">
+                      🏛️ ${b.orgSealBo} • ${b.orgSealEn || ''}
+                     </div>`
+                  : ''
+              }
+            </div>
+
+            <div style="display:flex;gap:4px;flex-shrink:0;">
+              ${
+                !isActive
+                  ? `<button type="button" class="mini-btn" style="background:#EFF6FF;color:#1E40AF;border-color:#BFDBFE;padding:5px 9px;font-size:11px;font-weight:700;" onclick="changeBook('${b.id}');openManageBooksModal();">
+                      🔄 ${t('བརྗེ་བ།', 'Switch')}
+                     </button>`
+                  : ''
+              }
+              <button type="button" class="mini-btn" style="background:#FEF3C7;color:#92400E;border-color:#FDE68A;padding:5px 9px;font-size:11px;font-weight:700;" onclick="openEditBookModal('${b.id}')">
+                ✏️ ${t('བཟོ་བཅོས།', 'Edit')}
+              </button>
+              <button type="button" class="mini-btn" style="background:${canDelete ? '#FEE2E2' : '#F1F5F9'};color:${canDelete ? '#B91C1C' : '#94A3B8'};border-color:${canDelete ? '#FECACA' : '#E2E8F0'};padding:5px 9px;font-size:11px;font-weight:700;" onclick="confirmDeleteBook('${b.id}')" ${canDelete ? '' : 'disabled title="' + t('རྩིས་དེབ་གཅིག་ལས་མེད་པས་བསུབ་མི་ཆོག', 'Cannot delete the only book') + '"'}>
+                🗑️ ${t('བསུབ་པ།', 'Delete')}
+              </button>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:#475569;background:#F8FAFC;padding:6px 10px;border-radius:8px;margin-top:8px;">
+            <div>
+              <span>📊 ${t('རྩིས་ཐོ།', 'Transactions')}: <strong>${txCount}</strong></span>
+            </div>
+            <div style="font-size:11px;">
+              <span>💵 ${formatMoney(openCash)}</span> • <span>🏦 ${formatMoney(openBank)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" style="color:#881337;">📚 ${t('རྩིས་དེབ་ཁག / ཚོང་ལས་དོ་དམ།', 'Manage Books & Companies')}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div style="font-size:12.5px;color:#475569;margin-bottom:12px;line-height:1.5;">
+      ${t(
+        'འདིར་ཁྱེད་ཀྱི་རྩིས་དེབ་དང་ཚོང་ལས་ཁག་གི་མིང་བཟོ་བཅོས་བྱེད་པའམ་བསུབ་ཆོག རྩིས་དེབ་གསར་པའང་བཟོ་ཐུབ།',
+        'Here you can edit book/company names, update opening balances, switch, or safely delete books.'
+      )}
+    </div>
+
+    <div style="margin-bottom:12px;max-height:55vh;overflow-y:auto;">
+      ${booksHtml}
+    </div>
+
+    <button type="button" class="action-btn cash-in" style="width:100%;padding:12px;font-size:13px;font-weight:800;" onclick="openNewBookModal(true)">
+      ➕ ${t('རྩིས་དེབ་གསར་པ་བཟོས།', 'Create New Account Book')}
+    </button>
+  `;
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function openEditBookModal(bookId) {
+  const book = state.books.find(b => b.id === bookId);
+  if (!book) return;
+
+  const openCash = (book.openingBalances && book.openingBalances.head_cash) || 0;
+  const openBank = (book.openingBalances && book.openingBalances.head_sbi) || 0;
+  const initialCap = openCash + openBank;
+
+  const sheet = document.getElementById('modalSheet');
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" style="color:#881337;">✏️ ${t('རྩིས་དེབ་བཟོ་བཅོས།', 'Edit Account Book')}</div>
+      <button class="sheet-close" onclick="openManageBooksModal()">✕</button>
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་དེབ་ཀྱི་མིང་ (བོད་ཡིག)', 'Book / Company Name in Tibetan')}</label>
+      <input type="text" id="editBookBo" class="ios-input" value="${book.bo || ''}" placeholder="དཔེར་ན། ཧི་མ་ལ་ཡ་ཚོང་ཁང་།" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་དེབ་ཀྱི་མིང་ (English)', 'Book / Company Name in English')}</label>
+      <input type="text" id="editBookEn" class="ios-input" value="${book.en || ''}" placeholder="e.g., Himalaya Sweater & Craft Shop" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">🏛️ ${t('གཞུང་འབྲེལ་དམ་ཕྲུག་གི་ཡི་གེ (བོད་ཡིག)', 'Official Seal Title in Tibetan')}</label>
+      <input type="text" id="editBookSealBo" class="ios-input" value="${book.orgSealBo || ''}" placeholder="དཔེར་ན། ཧི་མ་ལ་ཡ་ཚོང་ཁང་ཐམ་ག" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">🏛️ ${t('གཞུང་འབྲེལ་དམ་ཕྲུག་གི་ཡི་གེ (English)', 'Official Seal Title in English')}</label>
+      <input type="text" id="editBookSealEn" class="ios-input" value="${book.orgSealEn || ''}" placeholder="e.g., HIMALAYA SHOP SEAL" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">💵 ${t('ལག་དངུལ་ཐོག་མའི་ལྷག་མ། (Opening Cash • Dr)', 'Opening Cash Balance (Asset Dr)')}</label>
+      <input type="number" id="editBookOpenCash" class="ios-input" value="${openCash}" oninput="updateEditBookCapitalPreview()" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">🏦 ${t('དངུལ་ཁང་ཐོག་མའི་ལྷག་མ། (Opening Bank • Dr)', 'Opening Bank Balance (Asset Dr)')}</label>
+      <input type="number" id="editBookOpenBank" class="ios-input" value="${openBank}" oninput="updateEditBookCapitalPreview()" />
+    </div>
+
+    <div class="ios-input-group" style="background:#FFFBEB;border:1.5px solid #FCD34D;">
+      <div style="font-size:11.5px;font-weight:800;color:#881337;margin-bottom:2px;">
+        🏛️ ${t('ཐོག་མའི་མ་དངུལ། / སྤྱི་བཏང་མ་དངུལ། (General Fund / Capital • Cr)', 'General Fund / Capital (Cr)')}
+      </div>
+      <div id="editBookCapitalPreview" style="font-size:15px;font-weight:900;color:#15803D;">
+        ${formatMoney(initialCap)} Cr
+      </div>
+      <div style="font-size:10.5px;color:#475569;margin-top:2px;">
+        ${t('Dr ལག་དངུལ་ + དངུལ་ཁང་ = Cr ཐོག་མའི་མ་དངུལ།', 'Dr Cash + Bank = Cr Capital / General Fund')}
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+      <button type="button" class="action-btn" style="background:#F1F5F9;color:#334155;" onclick="openManageBooksModal()">
+        ✕ ${t('ཕྱིར་འཐེན།', 'Cancel')}
+      </button>
+      <button type="button" class="action-btn cash-in" onclick="saveEditBook('${book.id}')">
+        💾 ${t('ཉར་ཚགས།', 'Save Changes')}
+      </button>
+    </div>
+  `;
+}
+
+function updateEditBookCapitalPreview() {
+  const cEl = document.getElementById('editBookOpenCash');
+  const bEl = document.getElementById('editBookOpenBank');
+  const capEl = document.getElementById('editBookCapitalPreview');
+  const c = cEl ? Number(cEl.value) || 0 : 0;
+  const b = bEl ? Number(bEl.value) || 0 : 0;
+  if (capEl) capEl.textContent = `${formatMoney(c + b)} Cr`;
+}
+
+function saveEditBook(bookId) {
+  const book = state.books.find(b => b.id === bookId);
+  if (!book) return;
+
+  const bo = document.getElementById('editBookBo').value.trim();
+  const en = document.getElementById('editBookEn').value.trim();
+  const sealBo = document.getElementById('editBookSealBo').value.trim();
+  const sealEn = document.getElementById('editBookSealEn').value.trim();
+  const openCash = Number(document.getElementById('editBookOpenCash').value) || 0;
+  const openBank = Number(document.getElementById('editBookOpenBank').value) || 0;
+
+  if (!bo && !en) {
+    showToast(t('རྩིས་དེབ་ཀྱི་མིང་འབྲི་རོགས།', 'Please enter a book name'));
+    return;
+  }
+
+  book.bo = bo || en;
+  book.en = en || bo;
+  book.orgSealBo = sealBo || (bo || en) + ' ཐམ་ག';
+  book.orgSealEn = (sealEn || (en || bo)).toUpperCase();
+
+  if (!book.openingBalances) book.openingBalances = {};
+  book.openingBalances.head_cash = openCash;
+  book.openingBalances.head_sbi = openBank;
+
+  saveState();
+  renderAll();
+  showToast(t('✅ རྩིས་དེབ་བཟོ་བཅོས་ཟིན།', 'Account book updated successfully!'));
+  openManageBooksModal();
+}
+
+function confirmDeleteBook(bookId) {
+  const book = state.books.find(b => b.id === bookId);
+  if (!book) return;
+
+  if (state.books.length <= 1) {
+    showToast(t('⚠️ རྩིས་དེབ་ཉུང་མཐར་གཅིག་དགོས། རྩིས་དེབ་མཐའ་མ་འདི་བསུབ་མི་ཆོག', '⚠️ You must have at least one account book. Cannot delete the only book!'));
+    return;
+  }
+
+  const txCount = state.transactions.filter(tx => tx.bookId === bookId).length;
+
+  const ok = confirm(
+    t(
+      `⚠️ ཁྱེད་ཀྱིས་རྩིས་དེབ་ "${book.bo}" དང་དེའི་ནང་གི་རྩིས་ཐོ་ ${txCount} ཆ་ཚང་བསུབ་རྒྱུ་གཏན་འཁེལ་ཡིན་ནམ།\n\nའདི་བསུབས་རྗེས་ཕྱིར་ལེན་ཐབས་མེད།`,
+      `⚠️ Are you sure you want to delete "${book.en}"?\nAll ${txCount} transactions in this book will be permanently deleted!\n\nThis action cannot be undone.`
+    )
+  );
+
+  if (!ok) return;
+
+  // 1. Remove all transactions belonging to this book
+  state.transactions = state.transactions.filter(tx => tx.bookId !== bookId);
+
+  // 2. Remove khata entries for this book
+  if (Array.isArray(state.khataList)) {
+    state.khataList = state.khataList.filter(k => k.bookId !== bookId);
+  }
+
+  // 3. Remove book
+  state.books = state.books.filter(b => b.id !== bookId);
+
+  // 4. If deleted book was active, switch to first remaining book
+  if (state.activeBookId === bookId) {
+    state.activeBookId = state.books[0].id;
+  }
+
+  saveState();
+  renderAll();
+  showToast(t(`🗑️ རྩིས་དེབ་ "${book.bo}" བསུབས་ཟིན།`, `Account book "${book.en}" deleted.`));
+
+  // If modal is open, re-render the list
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  if (modalBackdrop && modalBackdrop.classList.contains('open')) {
+    openManageBooksModal();
+  }
+}
+
+function toggleViewMode(mode) {
+  const body = document.body;
+  const btnFrame = document.getElementById('btnFrameMode');
+  const btnFull = document.getElementById('btnFullMode');
+  if (mode === 'full') {
+    body.classList.add('fullscreen-mode');
+    if (btnFrame) btnFrame.classList.remove('active');
+    if (btnFull) btnFull.classList.add('active');
+  } else {
+    body.classList.remove('fullscreen-mode');
+    if (btnFrame) btnFrame.classList.add('active');
+    if (btnFull) btnFull.classList.remove('active');
+  }
+}
+
+// ----------------------------------------------------------------------------
+// iOS Edition: Free Community App (Apple App Store Compliant)
+// ----------------------------------------------------------------------------
+// Per Apple App Store Guideline 3.1.1 & 3.2.2, direct external donation,
+// UPI, and PayPal links are excluded on iOS. The app is 100% free with no in-app purchases.
+
+function openSupportCreatorModal() {
+  // Safe fallback to native sharing for iOS
+  shareAppToOthers();
+}
+
+function getAppShareData() {
+  const appUrl = window.location.href.split('#')[0].split('?')[0];
+  const shareTitle = '༄༅། །བོད་ཀྱི་རྩིས་དེབ། • Tibetan Account Book';
+  const shareText = `༄༅། །བོད་ཀྱི་རྩིས་དེབ། (Tibetan Account Book) — བོད་མིའི་སྤྱི་ཚོགས་དང་ཚོང་ལས། དགོན་སྡེ་ཁག་ལ་ཆེད་དུ་བཟོས་པའི་ ༡༠༠% རིན་མེད་རྩིས་དེབ་མཉེན་ཆས། རྩིས་རྒྱག་སྟབས་བདེ་ལ་དྲ་རྒྱ་མེད་ཀྱང་ (Offline) སྤྱོད་ཐུབ།\n\nFree Tibetan Accounting Web App for Community, Shops & Monasteries:\n👉 ${appUrl}`;
+  return { appUrl, shareTitle, shareText };
+}
+
+function shareAppToOthers() {
+  const { appUrl, shareTitle, shareText } = getAppShareData();
+
+  if (navigator && navigator.share) {
+    navigator
+      .share({
+        title: shareTitle,
+        text: shareText,
+        url: appUrl
+      })
+      .then(() => {
+        showToast(t('མཉམ་སྤྱོད་གནང་བར་ཐུགས་རྗེ་ཆེ། 🙏', 'Thank you for sharing the app! 🙏'));
+      })
+      .catch(err => {
+        if (!err || err.name !== 'AbortError') {
+          copyAppShareLink();
+        }
+      });
+  } else {
+    copyAppShareLink();
+  }
+}
+
+function shareAppViaWhatsApp() {
+  const { shareText } = getAppShareData();
+  const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+  window.open(waUrl, '_blank');
+}
+
+function copyAppShareLink() {
+  const { shareText } = getAppShareData();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(shareText).catch(() => {});
+  }
+  showToast(
+    t(
+      'མཉེན་ཆས་ཀྱི་དྲ་ཐག་ངོ་བཤུས་ཟིན། WhatsApp སོགས་སུ་སྦྱར་ཆོག 📋',
+      'App link copied! You can paste and share it. 📋'
+    )
+  );
+}
+
+function resetDemoData() {
+  localStorage.removeItem(STORAGE_KEY);
+  state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  renderAll();
+  showToast(t('དཔེ་མཚོན་རྩིས་ཐོ་བསྐྱར་གསོ་ཟིན་པ།', 'Demo data restored!'));
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  renderAll();
+});

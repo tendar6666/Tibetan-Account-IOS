@@ -1,0 +1,1636 @@
+:root {
+  --ios-bg: #F2F2F7;
+  --ios-card: #FFFFFF;
+  --ios-text: #1C1C1E;
+  --ios-subtext: #6C6C70;
+  --ios-border: rgba(60, 60, 67, 0.12);
+  --maroon-primary: #881337;
+  --maroon-dark: #4C0519;
+  --gold-accent: #D97706;
+  --gold-light: #FEF3C7;
+  --ios-green: #16A34A;
+  --ios-green-bg: #DCFCE7;
+  --ios-red: #DC2626;
+  --ios-red-bg: #FEE2E2;
+  --ios-blue: #007AFF;
+  --font-tibetan: 'Noto Sans Tibetan', 'Kailasa', 'Microsoft Himalaya', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-tibetan);
+  background: radial-gradient(circle at top left, #1e1b4b 0%, #0f172a 55%, #18181b 100%);
+  color: var(--ios-text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 16px;
+  line-height: 1.55;
+}
+
+/* Desktop Control Bar (Hidden on mobile devices) */
+.desktop-toolbar {
+  width: 100%;
+  max-width: 960px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 10px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #F8FAFC;
+}
+
+.toolbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toolbar-badge {
+  background: linear-gradient(135deg, #9F1239, #BE123C);
+  color: #FDE047;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  border: 1px solid rgba(253, 224, 71, 0.35);
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar-btn {
+  background: rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.toolbar-btn.active {
+  background: #FDE047;
+  color: #4C0519;
+  border-color: #FDE047;
+  font-weight: 700;
+}
+
+/* iPhone 16 Pro Device Frame */
+.iphone-shell {
+  width: 412px;
+  height: 852px;
+  background: var(--ios-bg);
+  border-radius: 52px;
+  box-shadow:
+    0 0 0 11px #27272A,
+    0 0 0 13px #52525B,
+    0 28px 70px rgba(0, 0, 0, 0.65);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Fullscreen / Native Mode */
+body.fullscreen-mode {
+  padding: 0;
+  background: var(--ios-bg);
+}
+
+body.fullscreen-mode .desktop-toolbar {
+  border-radius: 0;
+  margin-bottom: 0;
+  max-width: 100%;
+  background: #1E293B;
+}
+
+body.fullscreen-mode .iphone-shell {
+  width: 100%;
+  max-width: 540px;
+  height: calc(100vh - 54px);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+body.fullscreen-mode .ios-status-bar,
+body.fullscreen-mode .ios-home-indicator {
+  display: none;
+}
+
+/* iOS Status Bar & Dynamic Island */
+.ios-status-bar {
+  height: 48px;
+  background: linear-gradient(135deg, #4C0519 0%, #881337 100%);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 26px;
+  font-size: 13px;
+  font-weight: 600;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.dynamic-island {
+  width: 116px;
+  height: 28px;
+  background: #000000;
+  border-radius: 20px;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 10px;
+}
+
+.dynamic-island-Dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #1d4ed8 0%, #0f172a 70%);
+}
+
+/* App Top Header */
+.app-header {
+  background: linear-gradient(135deg, #4C0519 0%, #881337 60%, #9F1239 100%);
+  color: #FFFFFF;
+  padding: 12px 16px 14px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(76, 5, 25, 0.25);
+  z-index: 10;
+}
+
+.header-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.app-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.app-logo-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #FDE047, #F59E0B);
+  color: #4C0519;
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1;
+  padding-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
+}
+
+.app-title-main {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+  padding-top: 2px;
+  color: #FEF9C3;
+}
+
+.app-title-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  display: block;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pill-select {
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+
+.pill-select option {
+  color: #1C1C1E;
+  background: #FFFFFF;
+}
+
+/* Account Book Selector Bar */
+.book-selector-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(253, 224, 71, 0.25);
+  border-radius: 12px;
+  padding: 6px 8px;
+  gap: 5px;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.book-selector-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.book-select-dropdown {
+  background: transparent;
+  color: #FFFFFF;
+  border: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  flex: 1 1 0%;
+  min-width: 0;
+  width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  outline: none;
+  cursor: pointer;
+}
+
+.book-select-dropdown option {
+  color: #1C1C1E;
+  background: #FFFFFF;
+}
+
+.new-book-btn {
+  background: rgba(253, 224, 71, 0.2);
+  color: #FDE047;
+  border: 1px solid rgba(253, 224, 71, 0.4);
+  border-radius: 8px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Scrollable Main Content Area */
+.ios-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 14px 96px;
+  scroll-behavior: smooth;
+}
+
+.ios-content::-webkit-scrollbar {
+  width: 4px;
+}
+.ios-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+/* Summary Balance Card */
+.summary-card {
+  background: linear-gradient(145deg, #1E293B 0%, #0F172A 100%);
+  color: #FFFFFF;
+  border-radius: 20px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-card::after {
+  content: "༄༅། །";
+  position: absolute;
+  right: 12px;
+  top: 6px;
+  font-size: 28px;
+  color: rgba(253, 224, 71, 0.12);
+  pointer-events: none;
+}
+
+.balance-label {
+  font-size: 12.5px;
+  color: #94A3B8;
+  margin-bottom: 2px;
+}
+
+.balance-amount {
+  font-size: 27px;
+  font-weight: 800;
+  color: #F8FAFC;
+  letter-spacing: -0.5px;
+  margin-bottom: 12px;
+}
+
+.summary-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 12px;
+}
+
+.metric-box {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+.metric-title {
+  font-size: 11.5px;
+  color: #CBD5E1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.metric-val {
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.metric-val.income {
+  color: #4ADE80;
+}
+
+.metric-val.expense {
+  color: #F87171;
+}
+
+/* Quick Cash In / Cash Out / Contra / JV Bar */
+.quick-entry-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.quick-entry-grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.action-btn {
+  border: none;
+  border-radius: 13px;
+  padding: 10px 10px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: transform 0.12s ease;
+}
+
+.action-btn:active {
+  transform: scale(0.97);
+}
+
+.action-btn.cash-in {
+  background: linear-gradient(135deg, #16A34A, #15803D);
+  color: #FFFFFF;
+}
+
+.action-btn.cash-out {
+  background: linear-gradient(135deg, #DC2626, #B91C1C);
+  color: #FFFFFF;
+}
+
+.action-btn.contra-btn {
+  background: linear-gradient(135deg, #0284C7, #0369A1);
+  color: #FFFFFF;
+}
+
+.action-btn.jv-btn {
+  background: linear-gradient(135deg, #7C3AED, #6D28D9);
+  color: #FFFFFF;
+}
+
+.cash-bank-strip {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.cb-pill {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 6px 9px;
+  font-size: 11.5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.voucher-tag {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 5px;
+  text-transform: uppercase;
+}
+
+.voucher-tag.RECEIPT {
+  background: #DCFCE7;
+  color: #15803D;
+}
+
+.voucher-tag.PAYMENT {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.voucher-tag.CONTRA {
+  background: #E0F2FE;
+  color: #0369A1;
+}
+
+.voucher-tag.JV {
+  background: #F3E8FF;
+  color: #6D28D9;
+}
+
+.drcr-box {
+  background: #F8FAFC;
+  border: 1px dashed #CBD5E1;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: #334155;
+  line-height: 1.65;
+}
+
+.double-entry-preview {
+  background: linear-gradient(135deg, #F8FAFC, #EFF6FF);
+  border: 1.5px solid #BFDBFE;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+/* iOS Segmented Filter */
+.segmented-bar {
+  display: flex;
+  background: #E5E5EA;
+  padding: 3px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.seg-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ios-subtext);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.seg-btn.active {
+  background: #FFFFFF;
+  color: var(--ios-text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+/* iOS List Cards */
+.ios-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ios-subtext);
+  margin: 6px 4px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.tx-card {
+  background: var(--ios-card);
+  border-radius: 15px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--ios-border);
+}
+
+.tx-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.tx-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  flex-shrink: 0;
+}
+
+.tx-icon.in {
+  background: var(--ios-green-bg);
+}
+
+.tx-icon.out {
+  background: var(--ios-red-bg);
+}
+
+.tx-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tx-cat-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ios-text);
+  line-height: 1.6;
+  padding-top: 3px;
+  padding-bottom: 2px;
+}
+
+.tx-note {
+  font-size: 12.5px;
+  color: var(--ios-subtext);
+  line-height: 1.75;
+  padding-top: 5px;
+  padding-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tx-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #8E8E93;
+  line-height: 1.5;
+}
+
+.mode-badge {
+  background: #F2F2F7;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-weight: 600;
+  color: #48484A;
+}
+
+.tx-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.tx-amount {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.tx-amount.in {
+  color: var(--ios-green);
+}
+
+.tx-amount.out {
+  color: var(--ios-red);
+}
+
+.tx-mini-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.mini-btn {
+  border: 1px solid var(--ios-border);
+  background: #F8FAFC;
+  color: #334155;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mini-btn:hover {
+  background: #E2E8F0;
+}
+
+/* Khata / Credit Customer Cards */
+.khata-card {
+  background: var(--ios-card);
+  border-radius: 15px;
+  padding: 13px;
+  margin-bottom: 10px;
+  border: 1px solid var(--ios-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.khata-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.khata-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.khata-phone {
+  font-size: 12px;
+  color: var(--ios-subtext);
+}
+
+.khata-bal {
+  text-align: right;
+}
+
+.khata-bal-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.khata-bal-val {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.khata-actions {
+  display: flex;
+  gap: 6px;
+  border-top: 1px solid var(--ios-border);
+  padding-top: 9px;
+}
+
+.khata-btn {
+  flex: 1;
+  border: 1px solid var(--ios-border);
+  background: #F8FAFC;
+  border-radius: 9px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.khata-btn.whatsapp {
+  background: #DCFCE7;
+  color: #166534;
+  border-color: #86EFAC;
+}
+
+/* Official Receipt Card */
+.receipt-paper {
+  background: #FFFBEB;
+  border: 2px solid #D97706;
+  border-radius: 16px;
+  padding: 18px 16px;
+  position: relative;
+  box-shadow: 0 8px 20px rgba(217, 119, 6, 0.12);
+  margin-bottom: 14px;
+}
+
+.receipt-header {
+  text-align: center;
+  border-bottom: 2px dashed rgba(180, 83, 9, 0.35);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.receipt-yiggo {
+  font-size: 20px;
+  color: #881337;
+  font-weight: 700;
+}
+
+.receipt-org {
+  font-size: 17px;
+  font-weight: 800;
+  color: #4C0519;
+}
+
+.receipt-badge {
+  display: inline-block;
+  background: #881337;
+  color: #FEF08A;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 12px;
+  border-radius: 999px;
+  margin-top: 5px;
+}
+
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(217, 119, 6, 0.18);
+  font-size: 13px;
+}
+
+.receipt-row-label {
+  color: #78350F;
+  font-weight: 600;
+}
+
+.receipt-row-val {
+  color: #1C1C1E;
+  font-weight: 700;
+  text-align: right;
+}
+
+.receipt-total-box {
+  background: rgba(136, 19, 55, 0.08);
+  border: 1.5px solid #881337;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.receipt-stamp {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.seal-circle {
+  width: 68px;
+  height: 68px;
+  border: 2.5px double #DC2626;
+  border-radius: 50%;
+  color: #DC2626;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  transform: rotate(-10deg);
+  background: rgba(220, 38, 38, 0.04);
+  line-height: 1.2;
+}
+
+/* Reports & Pricing Cards */
+.report-card {
+  background: var(--ios-card);
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--ios-border);
+}
+
+.cat-bar-item {
+  margin-bottom: 10px;
+}
+
+.cat-bar-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.cat-bar-track {
+  height: 8px;
+  background: #F1F5F9;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.cat-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+}
+
+.pricing-tier {
+  border: 1.5px solid var(--ios-border);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #FFFFFF;
+}
+
+.pricing-tier.featured {
+  border-color: #881337;
+  background: linear-gradient(180deg, #FFF1F2 0%, #FFFFFF 100%);
+}
+
+/* Bottom Tab Bar */
+.ios-tab-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 76px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--ios-border);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 6px 8px 18px;
+  z-index: 25;
+}
+
+.tab-item {
+  border: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: #8E8E93;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.tab-item.active {
+  color: var(--maroon-primary);
+}
+
+.tab-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.tab-label {
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.ios-home-indicator {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 134px;
+  height: 5px;
+  background: #1C1C1E;
+  border-radius: 99px;
+  z-index: 30;
+  opacity: 0.25;
+}
+
+/* iOS Modal Sheet */
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(3px);
+  z-index: 50;
+  display: none;
+  align-items: flex-end;
+}
+
+.modal-backdrop.open {
+  display: flex;
+}
+
+.modal-sheet {
+  width: 100%;
+  max-height: 86%;
+  background: var(--ios-bg);
+  border-radius: 26px 26px 0 0;
+  padding: 16px 16px 28px;
+  overflow-y: auto;
+  animation: slideUp 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sheet-handle {
+  width: 40px;
+  height: 5px;
+  background: #C7C7CC;
+  border-radius: 99px;
+  margin: 0 auto 12px;
+}
+
+.sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.sheet-title {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.sheet-close {
+  border: none;
+  background: #E5E5EA;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* One-Tap Tibetan Category Grid */
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.cat-chip {
+  background: #FFFFFF;
+  border: 1.5px solid var(--ios-border);
+  border-radius: 12px;
+  padding: 8px 6px;
+  text-align: center;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.cat-chip.selected {
+  border-color: var(--maroon-primary);
+  background: #FFF1F2;
+  box-shadow: 0 0 0 2px rgba(136, 19, 55, 0.15);
+}
+
+.cat-chip-icon {
+  font-size: 20px;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.cat-chip-bo {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ios-text);
+  display: block;
+}
+
+.cat-chip-en {
+  font-size: 10px;
+  color: var(--ios-subtext);
+  display: block;
+}
+
+.cat-chip-group {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.cat-chip-group.income {
+  background: #DCFCE7;
+  color: #15803D;
+}
+
+.cat-chip-group.expense {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.cat-chip-group.party_jv {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.cat-chip-group.cash_bank {
+  background: #E0F2FE;
+  color: #0369A1;
+}
+
+.ios-input-group {
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: 12px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--ios-border);
+}
+
+.ios-input-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ios-subtext);
+  display: block;
+  margin-bottom: 6px;
+  line-height: 1.75;
+  padding-top: 2px;
+}
+
+.ios-input {
+  width: 100%;
+  border: none;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ios-text);
+  outline: none;
+  background: transparent;
+  line-height: 1.75;
+  padding: 4px 0;
+}
+
+.ios-input.big-amount {
+  font-size: 24px;
+  font-weight: 800;
+}
+
+/* Toast Notification */
+.ios-toast {
+  position: absolute;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: rgba(15, 23, 42, 0.94);
+  color: #FFFFFF;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  z-index: 80;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.ios-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Trial Balance & Balance Sheet Tables */
+.fin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.fin-table th {
+  background: #F1F5F9;
+  color: #334155;
+  padding: 6px 5px;
+  border-bottom: 1.5px solid #CBD5E1;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.fin-table td {
+  padding: 6px 5px;
+  border-bottom: 1px solid #E2E8F0;
+  vertical-align: middle;
+}
+
+.bs-side-box {
+  background: #F8FAFC;
+  border: 1px solid #CBD5E1;
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.bs-side-header {
+  font-size: 12.5px;
+  font-weight: 800;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1.5px solid #CBD5E1;
+  display: flex;
+  justify-content: space-between;
+}
+
+.bs-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px dashed #E2E8F0;
+}
+
+.bs-total-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 900;
+  margin-top: 8px;
+}
+
+/* ===================================================
+   RESPONSIVE LAYOUT FOR ALL PHONES, FOLDABLES & TABLETS
+   (iPhone Mini, Pro, Pro Max, Surface Duo, Z Fold, iPad, Android)
+   =================================================== */
+
+/* 1. Standalone Installed PWA Mode (Any phone/tablet added to Home Screen) */
+@media (display-mode: standalone) {
+  body {
+    padding: 0 !important;
+    background: var(--ios-bg) !important;
+  }
+  .desktop-toolbar {
+    display: none !important;
+  }
+  .ios-status-bar,
+  .ios-home-indicator {
+    display: none !important;
+  }
+  .iphone-shell {
+    width: 100vw !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .app-header {
+    padding-top: max(14px, env(safe-area-inset-top)) !important;
+  }
+  .ios-tab-bar {
+    padding-bottom: max(14px, env(safe-area-inset-bottom)) !important;
+    height: calc(60px + env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* 2. All Mobile Phones, Surface Duo, Foldables (Width up to 640px) */
+@media (max-width: 640px) {
+  body {
+    padding: 0;
+    background: var(--ios-bg);
+  }
+  .desktop-toolbar {
+    display: none !important;
+  }
+  .iphone-shell {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .ios-status-bar,
+  .ios-home-indicator {
+    display: none;
+  }
+  .app-header {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+  .ios-tab-bar {
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    height: calc(60px + env(safe-area-inset-bottom));
+  }
+}
+
+/* 3. Tablets, iPads, Foldables Unfolded & Wide Screens (641px to 1024px) */
+@media (min-width: 641px) and (max-width: 1024px) {
+  body {
+    padding: 0;
+    background: #0F172A;
+  }
+  .desktop-toolbar {
+    display: none !important;
+  }
+  .iphone-shell {
+    width: 100%;
+    max-width: 680px;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+    margin: 0 auto;
+  }
+  .ios-status-bar,
+  .ios-home-indicator {
+    display: none;
+  }
+  .app-header {
+    padding-top: max(14px, env(safe-area-inset-top));
+  }
+  .modal-sheet {
+    max-width: 620px;
+    margin: 0 auto;
+    border-radius: 24px 24px 0 0;
+  }
+}
+
+/* 4. Touch Devices with coarse pointer (Tablets, Touch Screens of any width) */
+@media (pointer: coarse) and (max-width: 1024px) {
+  .desktop-toolbar {
+    display: none !important;
+  }
+  .ios-status-bar,
+  .ios-home-indicator {
+    display: none !important;
+  }
+}
+
+/* Official Cash Book PDF Statement & Bilingual Asset Report Styles */
+.cashbook-statement-paper {
+  background: #FFFFFF;
+  border: 1.5px solid #0F172A;
+  border-radius: 12px;
+  padding: 14px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  font-family: 'Noto Sans Tibetan', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #0F172A;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.statement-header-box {
+  text-align: center;
+  border-bottom: 2px solid #0F172A;
+  padding-top: 14px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+.statement-yiggo {
+  font-size: 19px;
+  color: #881337;
+  font-weight: 800;
+  line-height: 2.1;
+  padding-top: 10px;
+  padding-bottom: 4px;
+  display: block;
+}
+.statement-title-main {
+  font-size: 16px;
+  color: #0F172A;
+  font-weight: 800;
+  margin-top: 3px;
+  line-height: 1.7;
+  padding-top: 4px;
+  padding-bottom: 2px;
+}
+.statement-title-sub {
+  font-size: 11px;
+  color: #475569;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  line-height: 1.6;
+  padding-top: 3px;
+}
+.statement-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 5px 8px;
+  background: #F8FAFC;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.bifurcation-card {
+  background: #F8FAFC;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.bifurcation-title {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #1E3A8A;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed #CBD5E1;
+  padding-bottom: 4px;
+}
+.bifurcation-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  padding: 2.5px 0;
+  color: #334155;
+  border-bottom: 1px dotted #E2E8F0;
+}
+.bifurcation-row:last-child {
+  border-bottom: none;
+}
+.bifurcation-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  font-weight: 900;
+  color: #0F172A;
+  border-top: 1.5px solid #94A3B8;
+  padding-top: 5px;
+  margin-top: 5px;
+}
+.statement-seal-box {
+  border-top: 1.5px solid #CBD5E1;
+  padding-top: 12px;
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* ============================================================================
+   Bulletproof Multi-Page Print Stylesheet (Fixes Top/Bottom & Page Break Cuts)
+   ============================================================================ */
+@media print {
+  /* 1. Page settings & global margins */
+  @page {
+    size: A4 portrait;
+    margin: 10mm 10mm 12mm 10mm;
+  }
+
+  html,
+  body {
+    background: #FFFFFF !important;
+    color: #0F172A !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    font-size: 11px !important;
+  }
+
+  /* 2. Completely hide all top/bottom app chrome */
+  .desktop-toolbar,
+  .ios-status-bar,
+  .app-header,
+  .ios-tab-bar,
+  .ios-home-indicator,
+  .no-print,
+  .sheet-handle,
+  .sheet-header,
+  .sheet-close,
+  .ios-toast {
+    display: none !important;
+  }
+
+  /* 3. Hide background app page (.ios-content) when printing from modal */
+  body.modal-printing-cashbook #iosContent,
+  body:has(.modal-backdrop.open) #iosContent,
+  body:has(#modalBackdrop.open) #iosContent {
+    display: none !important;
+  }
+
+  /* 4. Flatten the iPhone Simulator Shell to natural page flow */
+  .iphone-shell {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    transform: none !important;
+  }
+
+  /* 5. Flatten Modal Backdrop to static natural page flow (prevents cutting bottom off) */
+  .modal-backdrop.open,
+  #modalBackdrop.open {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: auto !important;
+  }
+
+  .modal-backdrop.open .modal-sheet,
+  #modalBackdrop.open .modal-sheet {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #FFFFFF !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    animation: none !important;
+    transform: none !important;
+  }
+
+  /* 6. Document styling for print */
+  .cashbook-statement-paper {
+    border: none !important;
+    box-shadow: none !important;
+    padding-top: 10px !important;
+    padding-bottom: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .statement-header-box {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    border-bottom: 1.5px solid #0F172A !important;
+    padding-top: 14px !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .statement-yiggo {
+    font-size: 19px !important;
+    color: #881337 !important;
+    font-weight: 800 !important;
+    line-height: 2.1 !important;
+    padding-top: 10px !important;
+    padding-bottom: 4px !important;
+    display: block !important;
+  }
+
+  .statement-title-main {
+    line-height: 1.7 !important;
+    padding-top: 4px !important;
+    padding-bottom: 2px !important;
+  }
+
+  .statement-title-sub {
+    line-height: 1.6 !important;
+    padding-top: 3px !important;
+  }
+
+  /* 7. Strict Page Break Rules: Prevent row and card cutting */
+  .bifurcation-card {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 8px !important;
+    border: 1px solid #CBD5E1 !important;
+    padding: 6px 8px !important;
+  }
+
+  .fin-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* Avoid cutting rows in half horizontally across pages */
+  tr,
+  .fin-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  th,
+  td,
+  .fin-table th,
+  .fin-table td {
+    padding: 3.5px 5px !important;
+    font-size: 10px !important;
+    line-height: 1.45 !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-row-group !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Seal and Signatures block stays together */
+  .statement-seal-box {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-top: 10px !important;
+    padding-top: 10px !important;
+  }
+}
