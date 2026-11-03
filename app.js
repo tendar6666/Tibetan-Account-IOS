@@ -76,7 +76,10 @@ const DEFAULT_STATE = {
   selectedAccountLedgerHeadId: 'ALL', // 'ALL' (All active ledgers) or specific head.id
   accountLedgerDateFilter: '', // '' = Reset (all dates in period), or 'YYYY-MM-DD'
   accountLedgerSearchQuery: '', // Word search inside དབྱེ་དེབ། (Ledger)
-  showDrCr: true,
+  // Progressive Disclosure: Default to clean stream cards (+/- amount); toggle 👁️ Dr/Cr for technical view
+  showDrCr: false,
+  // 1-Tap Speed: Remember last payment method (Cash vs Bank/UPI) for fast consecutive entries
+  lastPaymentHeadId: 'head_cash',
   activeBookId: 'book_shop',
   selectedReceiptTxId: 'tx_100',
   // Selected Accounting Period (རྩིས་དུས།) for Cashbook, Trial Balance & Entry Date Validation
@@ -437,10 +440,26 @@ function t(bo, en) {
   return `${bo} • ${en}`;
 }
 
+function getCurrencyLocale(curr) {
+  if (curr === 'USD') return 'en-US';
+  if (curr === 'CAD') return 'en-CA';
+  if (curr === 'EUR') return 'de-DE';
+  return 'en-IN'; // INR & NPR (Lakhs/Crores grouping)
+}
+
+function roundMoney(val) {
+  return Math.round((Number(val) || 0) * 100) / 100;
+}
+
 function formatMoney(num) {
   const sym = (CURRENCIES[state.currency] || CURRENCIES.INR).symbol;
-  const formatted = Math.abs(Number(num || 0)).toLocaleString('en-IN');
-  return `${num < 0 ? '-' : ''}${sym}${formatted}`;
+  const rounded = roundMoney(num);
+  const locale = getCurrencyLocale(state.currency);
+  const formatted = Math.abs(rounded).toLocaleString(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+  return `${rounded < 0 ? '-' : ''}${sym}${formatted}`;
 }
 
 function getHead(headId) {
@@ -887,9 +906,10 @@ function getVoucherDynamicHeadLabels(tx) {
   if (vType === 'JV') {
     return {
       order: 'dr_first',
-      drLabelBo: isDrCashBank ? 'བརྒྱུད་འབྱོར།' : 'རྩིས་འགོ་གང་ནས།',
+      // In Tibetan grammar, '...ལ་' is Destination (Dr), '...ནས་' is Source (Cr)
+      drLabelBo: isDrCashBank ? 'བརྒྱུད་འབྱོར།' : 'རྩིས་འགོ་གང་ལ། (Dr)',
       drLabelEn: isDrCashBank ? 'Received Via (Dr)' : 'Debit Head (Dr)',
-      crLabelBo: isCrCashBank ? 'བརྒྱུད་བཏང་།' : 'རྩིས་འགོ་གང་ལ་བཏང་།',
+      crLabelBo: isCrCashBank ? 'བརྒྱུད་བཏང་།' : 'རྩིས་འགོ་གང་ནས། (Cr)',
       crLabelEn: isCrCashBank ? 'Paid Through (Cr)' : 'Credit Head (Cr)'
     };
   }
@@ -1143,38 +1163,46 @@ function renderLedgerTab() {
   const filtered = getFilteredCashbookTransactions();
 
   return `
-    <!-- Accounting Period Selection Bar (རྩིས་དུས་འདེམས་སྒྲིག) + Apply Button -->
-    <div class="report-card no-print" style="background:#EFF6FF;border:1.5px solid #93C5FD;padding:10px 12px;margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
-        <span style="font-size:12.5px;font-weight:800;color:#1E3A8A;">
-          📅 ${t('རྩིས་དུས་འདེམས་སྒྲིག', 'Accounting Period')}
-        </span>
-        <span style="font-size:10px;background:#DCFCE7;color:#166534;padding:2px 7px;border-radius:99px;font-weight:800;">
-          💾 ${t('གཏན་འབེབས།', 'Active')}: ${state.periodFrom} → ${state.periodTo}
-        </span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div class="ios-input-group" style="margin-bottom:0;padding:5px 8px;">
-          <label class="ios-input-label" style="margin-bottom:1px;font-size:10px;">${t('འགོ་འཛུགས་ཚེས།', 'Start Date')}</label>
-          <input type="date" id="periodFromInput" class="ios-input" style="font-size:12.5px;" value="${state.periodFrom}" />
+    <!-- Accounting Period Sleek Collapsible Bar (རྩིས་དུས་འདེམས་སྒྲིག) -->
+    <div class="report-card no-print" style="background:#EFF6FF;border:1.5px solid #93C5FD;padding:8px 12px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="togglePeriodBox()">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:12.5px;font-weight:800;color:#1E3A8A;">
+            📅 ${t('རྩིས་དུས།', 'Accounting Period')}
+          </span>
+          <span style="font-size:11px;background:#DCFCE7;color:#166534;padding:2px 8px;border-radius:99px;font-weight:800;">
+            ${state.periodFrom} → ${state.periodTo}
+          </span>
         </div>
-        <div class="ios-input-group" style="margin-bottom:0;padding:5px 8px;">
-          <label class="ios-input-label" style="margin-bottom:1px;font-size:10px;">${t('མཇུག་སྒྲིལ་ཚེས།', 'End Date')}</label>
-          <input type="date" id="periodToInput" class="ios-input" style="font-size:12.5px;" value="${state.periodTo}" />
-        </div>
+        <span id="periodToggleIcon" style="font-size:11px;font-weight:700;color:#1E40AF;background:#DBEAFE;padding:3px 8px;border-radius:6px;">
+          ⚙️ ${t('བཟོ་བཅོས། ▾', 'Change ▾')}
+        </span>
       </div>
 
-      <div id="periodRangeErrorBox" style="display:none;margin-top:8px;padding:7px 10px;border-radius:8px;background:#FEE2E2;border:1.5px solid #EF4444;color:#991B1B;font-size:11.5px;font-weight:700;">
-        ⚠️ ${t(
-          'འགོ་འཛུགས་ཚེས་གྲངས་དེ་མཇུག་སྒྲིལ་ཚེས་གྲངས་ལས་མང་བ་ཡོང་མི་ཆོག',
-          'Start Date cannot be greater than End Date! Please check the dates.'
-        )}
-      </div>
+      <div id="periodExpandedBox" style="display:none;margin-top:10px;border-top:1px dashed #BFDBFE;padding-top:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div class="ios-input-group" style="margin-bottom:0;padding:5px 8px;">
+            <label class="ios-input-label" style="margin-bottom:1px;font-size:10px;">${t('འགོ་འཛུགས་ཚེས།', 'Start Date')}</label>
+            <input type="date" id="periodFromInput" class="ios-input" style="font-size:12.5px;" value="${state.periodFrom}" />
+          </div>
+          <div class="ios-input-group" style="margin-bottom:0;padding:5px 8px;">
+            <label class="ios-input-label" style="margin-bottom:1px;font-size:10px;">${t('མཇུག་སྒྲིལ་ཚེས།', 'End Date')}</label>
+            <input type="date" id="periodToInput" class="ios-input" style="font-size:12.5px;" value="${state.periodTo}" />
+          </div>
+        </div>
 
-      <div style="margin-top:8px;">
-        <button type="button" class="action-btn" style="width:100%;background:#1E3A8A;color:#FEF08A;padding:9px 12px;font-size:13px;" onclick="applyAccountingPeriodInputs()">
-          ✅ ${t('རྩིས་དུས་གཏན་འབེབས།', 'Apply Accounting Period')}
-        </button>
+        <div id="periodRangeErrorBox" style="display:none;margin-top:8px;padding:7px 10px;border-radius:8px;background:#FEE2E2;border:1.5px solid #EF4444;color:#991B1B;font-size:11.5px;font-weight:700;">
+          ⚠️ ${t(
+            'འགོ་འཛུགས་ཚེས་གྲངས་དེ་མཇུག་སྒྲིལ་ཚེས་གྲངས་ལས་མང་བ་ཡོང་མི་ཆོག',
+            'Start Date cannot be greater than End Date! Please check the dates.'
+          )}
+        </div>
+
+        <div style="margin-top:8px;">
+          <button type="button" class="action-btn" style="width:100%;background:#1E3A8A;color:#FEF08A;padding:9px 12px;font-size:13px;" onclick="applyAccountingPeriodInputs()">
+            ✅ ${t('རྩིས་དུས་གཏན་འབེབས།', 'Apply Accounting Period')}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -2340,7 +2368,7 @@ function renderReportsTab() {
           </tbody>
           <tfoot>
             <tr style="background:#FEF3C7;font-weight:900;color:#4C0519;">
-              <td>${t('ཁྱོན་བསྡོམས། (གཡོན། = གཡས།)', 'Total (Dr = Cr)')}</td>
+              <td>${t('བསྡོམས་ཐོབ། (གཡོན། = གཡས།)', 'Total Tally (Dr = Cr)')}</td>
               <td style="text-align:right;">${formatMoney(tb.totalOpenDr)} <small>${state.lang === 'en' ? 'Dr=Cr' : 'གཡོན།=གཡས།'}</small></td>
               <td style="text-align:right;">${formatMoney(tb.totalPeriodDr)}</td>
               <td style="text-align:right;">${formatMoney(tb.totalPeriodCr)}</td>
@@ -2402,7 +2430,7 @@ function renderReportsTab() {
         }
 
         <div class="bs-total-row" style="background:#DCFCE7;color:#14532D;">
-          <span>${t('རྒྱུ་དངོས་ཁྱོན་བསྡོམས།', 'Total Assets')}</span>
+          <span>${t('རྒྱུ་དངོས་བསྡོམས་ཐོབ།', 'Total Assets')}</span>
           <span>${formatMoney(tb.totalAssetsValue)}</span>
         </div>
       </div>
@@ -2453,7 +2481,7 @@ function renderReportsTab() {
         }
 
         <div class="bs-total-row" style="background:#FFE4E6;color:#881337;">
-          <span>${t('མ་རྩ་དང་བུ་ལོན་ཁྱོན་བསྡོམས།', 'Total Capital & Liabilities')}</span>
+          <span>${t('མ་རྩ་དང་བུ་ལོན་བསྡོམས་ཐོབ།', 'Total Capital & Liabilities')}</span>
           <span>${formatMoney(tb.totalLiabilitiesAndCapital)}</span>
         </div>
       </div>
@@ -2517,6 +2545,19 @@ function renderReportsTab() {
       </div>
     </div>
   `;
+}
+
+function togglePeriodBox() {
+  const box = document.getElementById('periodExpandedBox');
+  const icon = document.getElementById('periodToggleIcon');
+  if (!box) return;
+  const isHidden = box.style.display === 'none';
+  box.style.display = isHidden ? 'block' : 'none';
+  if (icon) {
+    icon.innerHTML = isHidden
+      ? `✕ ${t('བསྡུ་བ། ▴', 'Close ▴')}`
+      : `⚙️ ${t('བཟོ་བཅོས། ▾', 'Change ▾')}`;
+  }
 }
 
 function applyAccountingPeriodInputs() {
@@ -3627,17 +3668,22 @@ function openEntryModal(mode) {
   const today = getTodayStr();
   modalDateValue = isDateWithinPeriod(today) ? today : state.periodTo;
 
+  // Fast 1-Tap Memory: Use the user's last chosen payment method (Cash vs Bank/UPI)
+  const defaultLiquidHead = (state.lastPaymentHeadId && state.accountHeads.some(h => h.id === state.lastPaymentHeadId && h.group === 'cash_bank'))
+    ? state.lastPaymentHeadId
+    : 'head_cash';
+
   if (mode === 'in') {
     const firstInc = state.accountHeads.find(h => h.group === 'income') || state.accountHeads[0];
     modalPrimaryHeadId = firstInc.id;
-    modalPaymentHeadId = 'head_cash';
+    modalPaymentHeadId = defaultLiquidHead;
   } else if (mode === 'out') {
     const firstExp = state.accountHeads.find(h => h.group === 'expense') || state.accountHeads[0];
     modalPrimaryHeadId = firstExp.id;
-    modalPaymentHeadId = 'head_cash';
+    modalPaymentHeadId = defaultLiquidHead;
   } else if (mode === 'contra') {
-    modalPaymentHeadId = 'head_cash';
-    modalPrimaryHeadId = 'head_sbi';
+    modalPaymentHeadId = defaultLiquidHead;
+    modalPrimaryHeadId = defaultLiquidHead === 'head_cash' ? 'head_sbi' : 'head_cash';
   } else if (mode === 'jv') {
     modalPaymentHeadId = 'rent_out';
     modalPrimaryHeadId = 'food';
@@ -3878,13 +3924,19 @@ function renderEntryModalContent() {
       <button class="seg-btn" onclick="switchModalMode('jv')">📒 ${state.lang === 'en' ? 'JV' : 'མཚུངས་ཁྲ།'}</button>
     </div>
 
-    <!-- Amount + Changeable Date Row (Validated against Accounting Period) -->
+    <!-- Amount + Quick Amount Chips + Changeable Date Row -->
     <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:8px;">
-      <div class="ios-input-group">
+      <div class="ios-input-group" style="margin-bottom:6px;">
         <label class="ios-input-label">${t('དངུལ་འབོར།', 'Amount')}</label>
         <input type="number" id="entryAmount" class="ios-input big-amount" placeholder="0" autofocus />
+        <div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">
+          <button type="button" class="mini-btn" style="background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;padding:3px 7px;font-size:10.5px;font-weight:700;" onclick="addQuickAmount(100)">+100</button>
+          <button type="button" class="mini-btn" style="background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;padding:3px 7px;font-size:10.5px;font-weight:700;" onclick="addQuickAmount(500)">+500</button>
+          <button type="button" class="mini-btn" style="background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;padding:3px 7px;font-size:10.5px;font-weight:700;" onclick="addQuickAmount(1000)">+1k</button>
+          <button type="button" class="mini-btn" style="background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;padding:3px 7px;font-size:10.5px;font-weight:700;" onclick="addQuickAmount(2000)">+2k</button>
+        </div>
       </div>
-      <div class="ios-input-group">
+      <div class="ios-input-group" style="margin-bottom:6px;">
         <label class="ios-input-label">📅 ${t('ཚེས་གྲངས།', 'Date')}</label>
         <input
           type="date"
@@ -3948,6 +4000,17 @@ function renderEntryModalContent() {
         <label class="ios-input-label" style="color:#0F172A;">
           ${step2Title}
         </label>
+
+        <!-- Fast 1-Tap Toggle for Cash vs Bank / UPI -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+          <button type="button" id="payChipCash" class="mini-btn" style="background:${modalPaymentHeadId === 'head_cash' ? '#DCFCE7' : '#F8FAFC'};color:${modalPaymentHeadId === 'head_cash' ? '#166534' : '#475569'};border:1.5px solid ${modalPaymentHeadId === 'head_cash' ? '#16A34A' : '#CBD5E1'};padding:8px 10px;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px;" onclick="selectModalPaymentHeadFast('head_cash')">
+            💵 ${t('ལག་དངུལ།', 'Cash in Hand')}
+          </button>
+          <button type="button" id="payChipBank" class="mini-btn" style="background:${modalPaymentHeadId === 'head_sbi' ? '#DCFCE7' : '#F8FAFC'};color:${modalPaymentHeadId === 'head_sbi' ? '#166534' : '#475569'};border:1.5px solid ${modalPaymentHeadId === 'head_sbi' ? '#16A34A' : '#CBD5E1'};padding:8px 10px;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px;" onclick="selectModalPaymentHeadFast('head_sbi')">
+            🏦 ${t('དངུལ་ཁང་ / UPI', 'Bank / UPI')}
+          </button>
+        </div>
+
         <select id="entryPaymentHead" class="ios-input" onchange="selectModalPaymentHead(this.value)">
           <optgroup label="${t('🏦 ལག་དངུལ་དང་དངུལ་ཁང་།', '🏦 Cash & Bank')}">
             ${cashBankHeads
@@ -4034,6 +4097,19 @@ function switchModalMode(newMode) {
     openEntryModal(newMode);
     modalDateValue = keepDate;
   });
+}
+
+function addQuickAmount(val) {
+  const el = document.getElementById('entryAmount');
+  if (!el) return;
+  const current = Number(el.value) || 0;
+  el.value = current + val;
+  el.focus();
+}
+
+function selectModalPaymentHeadFast(headId) {
+  modalPaymentHeadId = headId;
+  preserveAndReRenderEntryModal(() => {});
 }
 
 function selectModalPrimaryHead(headId) {
@@ -4124,6 +4200,10 @@ function saveNewTransaction() {
 
   state.transactions.unshift(newTx);
   state.selectedReceiptTxId = newTx.id;
+  // Remember last payment method (Cash vs Bank/UPI) for quick consecutive transactions
+  if (modalPaymentHeadId && state.accountHeads.some(h => h.id === modalPaymentHeadId && h.group === 'cash_bank')) {
+    state.lastPaymentHeadId = modalPaymentHeadId;
+  }
   saveState();
   closeModal();
   renderAll();
