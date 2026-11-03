@@ -27,7 +27,7 @@
       <span class="toolbar-badge">༄༅། །བོད་ཀྱི་རྩིས་དེབ།</span>
       <div>
         <div style="font-size:14px;font-weight:700;">Tibetan Account Book • བོད་ཀྱི་རྩིས་དེབ། (iOS App)</div>
-        <div style="font-size:11.5px;color:#CBD5E1;">
+        <div style="font-size:12px;color:#CBD5E1;">
           Built on Windows • Installable on iPhone via Safari ("Add to Home Screen")
         </div>
       </div>
@@ -103,6 +103,9 @@
         <button class="new-book-btn" style="background:rgba(255,255,255,0.18);color:#FFFFFF;border-color:rgba(255,255,255,0.35);" onclick="shareAppToOthers()" title="Share App with Friends & Community">
           📤 མཉམ་སྤྱོད།
         </button>
+        <button class="new-book-btn" style="background:rgba(255,255,255,0.22);color:#FEF08A;border-color:rgba(254,240,138,0.5);" onclick="openHelpModal()" title="Bilingual Help & FAQ (རོགས་རམ།)">
+          ❓ རོགས་རམ།
+        </button>
       </div>
     </div>
 
@@ -117,6 +120,25 @@
     <div id="modalBackdrop" class="modal-backdrop" onclick="if(event.target===this) closeModal()">
       <div id="modalSheet" class="modal-sheet"></div>
     </div>
+
+    <!-- Hidden multi-file input for attaching bills, receipts and PDFs -->
+    <input
+      type="file"
+      id="billFileInput"
+      accept="image/*,application/pdf"
+      multiple
+      style="display:none"
+      onchange="handleBillFileInputChange(event)"
+    />
+
+    <!-- Lightbox Document Preview Modal Container (Feature 15) -->
+    <div id="lightboxContainer" style="display:none;"></div>
+
+    <!-- Feature 24: First-Run Interactive Onboarding Wizard Modal -->
+    <div id="onboardingModal" class="modal-backdrop onboarding-modal-container" style="display:none;" onclick="if(event.target===this) closeOnboardingWizard()"></div>
+
+    <!-- Feature 25: Bilingual In-App FAQ & Help Modal -->
+    <div id="helpModal" class="modal-backdrop help-modal-container" style="display:none;" onclick="if(event.target===this) closeHelpModal()"></div>
   </main>
 
   <script src="app.js"></script>
