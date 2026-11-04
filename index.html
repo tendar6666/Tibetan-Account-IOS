@@ -10,6 +10,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Tibetan Account Book" />
   <meta name="theme-color" content="#881337" />
+  <meta name="screen-orientation" content="portrait" />
+  <meta name="x5-orientation" content="portrait" />
   <link rel="manifest" href="manifest.json" />
 
   <!-- Tibetan & System Typography -->
@@ -64,11 +66,7 @@
     <div class="app-header">
       <div class="header-top-row">
         <div class="app-title-wrap">
-          <div class="app-logo-circle">རྩིས།</div>
-          <div>
-            <div class="app-title-main">བོད་ཀྱི་རྩིས་དེབ།</div>
-            <span class="app-title-sub">Tibetan Account Book</span>
-          </div>
+          <div class="app-logo-circle" title="༄༅། །བོད་ཀྱི་རྩིས་དེབ།">རྩིས།</div>
         </div>
 
         <div class="header-controls">
@@ -97,21 +95,12 @@
 
       <!-- Account Book Selector (Shop / Monastery / Personal) -->
       <div class="book-selector-bar">
-        <select id="bookSelect" class="book-select-dropdown" onchange="changeBook(this.value)"></select>
-        <button class="new-book-btn" style="background:rgba(255,255,255,0.18);color:#FFFFFF;border-color:rgba(255,255,255,0.35);" onclick="openManageBooksModal()" title="Edit or Delete Account Books / Companies">
-          ⚙️ དོ་དམ།
-        </button>
-        <button class="new-book-btn" onclick="openNewBookModal()">+ རྩིས་དེབ།</button>
-        <button class="new-book-btn" style="background:rgba(56,189,248,0.22);color:#7DD3FC;border-color:rgba(56,189,248,0.5);" onclick="openBackupAndCloudModal()">
-          ☁️ སྤོ་བཤུགས།
-        </button>
-        <button class="new-book-btn" style="background:rgba(167,243,208,0.22);color:#A7F3D0;border-color:rgba(167,243,208,0.5);" onclick="openHelpModal()" title="Bilingual FAQ & Help">
-          ❓ རོགས་རམ།
-        </button>
-        <button class="new-book-btn" style="background:rgba(253,224,71,0.92);color:#4C0519;border-color:#FDE047;" onclick="openSupportCreatorModal()">
-          🙏 རྒྱབ་སྐྱོར།
+        <select id="bookSelect" class="book-select-dropdown" onchange="changeBook(this.value)" title="Active Account Book"></select>
+        <button class="new-book-btn" onclick="openNewBookModal()" title="Add New Account Book">
+          + རྩིས་དེབ།
         </button>
       </div>
+      <div style="display:none;" aria-hidden="true"><button type="button" onclick="openHelpModal()">❓ རོགས་རམ།</button></div>
     </div>
 
     <!-- Dynamic iOS Tab View Content -->

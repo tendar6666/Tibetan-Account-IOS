@@ -8553,11 +8553,11 @@ function openAddCurrencyModal() {
         ⚡ ${t('མགྱོགས་མྱུར་འདེམས་སྒྲིག (Quick Presets)', 'Quick Presets')}
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('RMB', '¥', 'རྒྱ་སྒོར།', 'RMB / Yuan')">
-          🇨🇳 RMB (¥ རྒྱ་སྒོར)
-        </button>
         <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('CHF', 'CHF', 'སུད་སྒོར།', 'Swiss Franc')">
           🇨🇭 CHF (སུད་སྒོར)
+        </button>
+        <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('CAD', 'C$', 'ཁ་ན་ཌའི་སྒོར།', 'Canadian Dollar')">
+          🇨🇦 CAD (C$ ཁ་ན་ཌའི་སྒོར)
         </button>
         <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('GBP', '£', 'དབྱིན་སྒོར།', 'British Pound')">
           🇬🇧 GBP (£ དབྱིན་སྒོར)
@@ -8568,28 +8568,31 @@ function openAddCurrencyModal() {
         <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('BTN', 'Nu.', 'འབྲུག་སྒོར།', 'Bhutanese Ngultrum')">
           🇧🇹 BTN (Nu. འབྲུག་སྒོར)
         </button>
+        <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('NPR', 'रू', 'བལ་སྒོར།', 'Nepalese Rupee')">
+          🇳🇵 NPR (रू བལ་སྒོར)
+        </button>
       </div>
     </div>
 
     <!-- Custom Currency Input Form -->
     <div class="ios-input-group">
-      <label class="ios-input-label">${t('༡། དངུལ་ལོར་ཨང་རྟགས། (Currency Code - e.g. RMB, CHF)', '1. Currency Code (e.g. RMB, CHF, GBP)')}</label>
-      <input type="text" id="newCurrCode" class="ios-input" placeholder="e.g. RMB" maxlength="6" style="text-transform:uppercase;font-weight:700;" />
+      <label class="ios-input-label">${t('༡། དངུལ་ལོར་ཨང་རྟགས། (Currency Code - e.g. CHF, CAD, GBP)', '1. Currency Code (e.g. CHF, CAD, GBP)')}</label>
+      <input type="text" id="newCurrCode" class="ios-input" placeholder="e.g. CHF" maxlength="6" style="text-transform:uppercase;font-weight:700;" />
     </div>
 
     <div class="ios-input-group">
-      <label class="ios-input-label">${t('༢། དངུལ་ལོར་མཚོན་རྟགས། (Symbol - e.g. ¥, CHF, £)', '2. Currency Symbol (e.g. ¥, CHF, £, A$)')}</label>
-      <input type="text" id="newCurrSymbol" class="ios-input" placeholder="e.g. ¥" maxlength="6" style="font-weight:700;" />
+      <label class="ios-input-label">${t('༢། དངུལ་ལོར་མཚོན་རྟགས། (Symbol - e.g. CHF, C$, £, A$)', '2. Currency Symbol (e.g. CHF, C$, £, A$)')}</label>
+      <input type="text" id="newCurrSymbol" class="ios-input" placeholder="e.g. CHF" maxlength="6" style="font-weight:700;" />
     </div>
 
     <div class="ios-input-group">
-      <label class="ios-input-label">${t('༣། བོད་ཡིག་མིང་། (Tibetan Name)', '3. Tibetan Name (e.g. རྒྱ་སྒོར།, སུད་སྒོར།)')}</label>
-      <input type="text" id="newCurrBo" class="ios-input" placeholder="དཔེར་ན། རྒྱ་སྒོར།" />
+      <label class="ios-input-label">${t('༣། བོད་ཡིག་མིང་། (Tibetan Name)', '3. Tibetan Name (e.g. སུད་སྒོར།, ཁ་ན་ཌའི་སྒོར།)')}</label>
+      <input type="text" id="newCurrBo" class="ios-input" placeholder="དཔེར་ན། སུད་སྒོར།" />
     </div>
 
     <div class="ios-input-group">
-      <label class="ios-input-label">${t('༤། དབྱིན་ཡིག་མིང་། (English Name)', '4. English Name (e.g. Chinese Yuan, Swiss Franc)')}</label>
-      <input type="text" id="newCurrEn" class="ios-input" placeholder="e.g. Chinese Yuan / RMB" />
+      <label class="ios-input-label">${t('༤། དབྱིན་ཡིག་མིང་། (English Name)', '4. English Name (e.g. Swiss Franc, Canadian Dollar)')}</label>
+      <input type="text" id="newCurrEn" class="ios-input" placeholder="e.g. Swiss Franc / Canadian Dollar" />
     </div>
 
     <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1.3fr;gap:10px;">
@@ -8756,10 +8759,16 @@ function openAppSettingsModal() {
       </div>
     </div>
 
-    <!-- 4. Quick Action Links -->
+    <!-- 4. Quick Tools & Help -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
       <button type="button" class="action-btn" style="background:#0F172A;color:#FEF08A;font-size:12px;padding:10px;" onclick="closeModal(); openManageBooksModal();">
         📘 ${t('རྩིས་དེབ་དོ་དམ།', 'Manage Books')}
+      </button>
+      <button type="button" class="action-btn" style="background:#0284C7;color:#FFFFFF;font-size:12px;padding:10px;" onclick="closeModal(); openBackupAndCloudModal();">
+        ☁️ ${t('གཞི་གྲངས་སྤོ་བཤུགས།', 'Phone Transfer')}
+      </button>
+      <button type="button" class="action-btn" style="background:#15803D;color:#FFFFFF;font-size:12px;padding:10px;" onclick="closeModal(); openHelpModal();">
+        ❓ ${t('རོགས་རམ་ FAQ', 'Help & FAQ')}
       </button>
       <button type="button" class="action-btn" style="background:#881337;color:#FEF08A;font-size:12px;padding:10px;" onclick="closeModal(); openOnboardingWizard(1);">
         🧭 ${t('ལམ་སྟོན་བསྐྱར་འཁྲིད།', 'Setup Wizard')}
@@ -10091,6 +10100,11 @@ function resetDemoData() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  if (typeof window !== 'undefined' && window.screen && window.screen.orientation && window.screen.orientation.lock) {
+    try {
+      window.screen.orientation.lock('portrait').catch(() => {});
+    } catch (_) {}
+  }
   renderAll();
   registerServiceWorker().catch(() => {});
   requestPersistentStorage().catch(() => {});
