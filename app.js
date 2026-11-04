@@ -7709,7 +7709,7 @@ function renderOnboardingWizard() {
         </div>
         <div class="onboarding-step-desc">
           ${t(
-            'ཁྱེད་རང་ལ་སྟབས་བདེ་བའི་མཉེན་ཆས་ཀྱི་སྐད་ཡིག་འདེམས་རོགས། རྗེས་སུ་གོང་གི་སྒྲིག་འགོད་ནས་དུས་គ្រប់ពេលབསྒྱུར་ཐུབ།',
+            'ཁྱེད་རང་ལ་སྟབས་བདེ་བའི་མཉེན་ཆས་ཀྱི་སྐད་ཡིག་འདེམས་རོགས། རྗེས་སུ་གོང་གི་སྒྲིག་འགོད་ནས་དུས་ནམ་ཡང་བསྒྱུར་ཐུབ།',
             'Select how Tibetan and English labels are displayed across the app. You can switch this anytime from the top bar.'
           )}
         </div>
@@ -7753,7 +7753,7 @@ function renderOnboardingWizard() {
         </div>
         <div class="onboarding-step-desc">
           ${t(
-            'རིམ་པ་གཉིས་ཀའི་རྒྱབ་ལྗོངས་སུ་གཉིས་ལྡན་རྩིས་སྲོལ་ (Double-Entry) རང་کار་འགྲོ་བཞིན་ཡོད། ཁྱེད་ལ་འཚམ་པའི་རྣམ་པ་འདེམས་རོགས།',
+            'རིམ་པ་གཉིས་ཀའི་རྒྱབ་ལྗོངས་སུ་གཉིས་ལྡན་རྩིས་སྲོལ་ (Double-Entry) རང་འགུལ་གྱིས་འགྲོ་བཞིན་ཡོད། ཁྱེད་ལ་འཚམ་པའི་རྣམ་པ་འདེམས་རོགས།',
             'Both modes use accurate Double-Entry accounting under the hood. Choose the view that matches your comfort level:'
           )}
         </div>
@@ -7763,7 +7763,7 @@ function renderOnboardingWizard() {
           <div class="onboarding-option-content">
             <div class="onboarding-option-title">🌱 ལས་སླ་པོ། • Beginner Mode (Cash In / Cash Out)</div>
             <div class="onboarding-option-sub">
-              ཚོང་ཁང་ཆུང་ངུ་དང་སྒེར་གྱི་ཉིན་རེའི་བྱུང་སོང་ (🟢 བྱུང་བ་ / 🔴 སོང་བ་) ཐོ་འགོད་བྱེད་ಲು་སྟབས་བདེ་ཤོས། • Simple Cash In & Cash Out buttons with automatic ledger balancing.
+              ཚོང་ཁང་ཆུང་ངུ་དང་སྒེར་གྱི་ཉིན་རེའི་བྱུང་སོང་ (🟢 བྱུང་བ་ / 🔴 སོང་བ་) ཐོ་འགོད་བྱེད་པར་སྟབས་བདེ་ཤོས། • Simple Cash In & Cash Out buttons with automatic ledger balancing.
             </div>
           </div>
         </button>
@@ -7847,7 +7847,7 @@ function renderOnboardingWizard() {
         </div>
         <div class="onboarding-step-desc">
           ${t(
-            'ལག་དངུལ་དང་དངུལ་ཁང་གི་ཐོག་མའི་ལྷག་མ་འགོད་རོགས། མཉེན་ཆས་ཀྱིས་རང་کار་ཐོག་མའི་མ་དངུལ་ (Capital Fund Cr) དང་ཆ་སྙོམས་བཟོ་གི་རེད།',
+            'ལག་དངུལ་དང་དངུལ་ཁང་གི་ཐོག་མའི་ལྷག་མ་འགོད་རོགས། མཉེན་ཆས་ཀྱིས་རང་འགུལ་གྱིས་ཐོག་མའི་མ་དངུལ་ (Capital Fund Cr) དང་ཆ་སྙོམས་བཟོ་གི་རེད།',
             'Enter your starting Cash in Hand and Bank Balance, and optionally add custom Account Heads.'
           )}
         </div>
@@ -8009,7 +8009,7 @@ const FAQ_TOPICS = [
     icon: '🔄',
     qBo: '༤། དངུལ་བཅུག་བཏོན་ (Contra) དང་མཚུངས་ཁྲ་ (Journal Voucher - JV) གང་དུས་བེད་སྤྱོད་གཏོང་དགོས།',
     qEn: '4. When should I use Contra (Cash/Bank Transfer) vs Journal Voucher (JV)?',
-    aBo: '🔄 དངུལ་བཅུག་བཏོན་ (Contra): ལག་དངུལ་དངུལ་ཁང་ནང་བཅུག་པའམ། དངུལ་ཁང་ནས་ལག་དངུལ་བཏོན་པ་ལྟ་བུ་རང་ཉིད་ཀྱི་ལག་དངུལ་དང་དངུལ་ཁང་བར་དངུལ་སྤོ་བཤུགས་བྱེད་སྐབས་སྤྱོད་དགོས། 📒 མཚུངས་ཁྲ་ (JV): ལག་དངུལ་ཐད་ཀར་མ་འགྲོ་བར་མི་སྣའི་བུ་ལོན་དང་སྔ་འདོན་རྩིས་ས 깔끔་ (Adjustment / Credit Purchase) བྱེད་སྐབས་སྤྱོད་དགོས།',
+    aBo: '🔄 དངུལ་བཅུག་བཏོན་ (Contra): ལག་དངུལ་དངུལ་ཁང་ནང་བཅུག་པའམ། དངུལ་ཁང་ནས་ལག་དངུལ་བཏོན་པ་ལྟ་བུ་རང་ཉིད་ཀྱི་ལག་དངུལ་དང་དངུལ་ཁང་བར་དངུལ་སྤོ་བཤུགས་བྱེད་སྐབས་སྤྱོད་དགོས། 📒 མཚུངས་ཁྲ་ (JV): ལག་དངུལ་ཐད་ཀར་མ་འགྲོ་བར་མི་སྣའི་བུ་ལོན་དང་སྔ་འདོན་རྩིས་གཙང་བཟོ་བ་ (Adjustment / Credit Purchase) བྱེད་སྐབས་སྤྱོད་དགོས།',
     aEn: '🔄 Contra Entry is used for internal transfers between Cash and Bank accounts (Depositing cash into SBI Bank, Withdrawing cash from ATM, or Bank-to-Bank transfer). 📒 Journal Voucher (JV) is used for non-cash adjustments, credit purchases, settling staff advances against bills, or fund transfers.',
     tags: 'contra jv journal voucher bank deposit withdrawal transfer དངུལ་བཅུག་བཏོན མཚུངས་ཁྲ'
   },
@@ -8049,7 +8049,7 @@ const FAQ_TOPICS = [
     icon: '🖨️',
     qBo: '༨། རྩིས་ཞིབ་ཆེད་ A4 PDF རྩིས་ཤོག་དང་ Excel (CSV) ཇི་ལྟར་ཕྱིར་འདྲེན་བྱེད་དགོས།',
     qEn: '8. How to export A4 Audit PDF Statements and Excel (CSV) reports?',
-    aBo: 'ཉིན་རེའི་རྩིས་ཐོ་དང་། དབྱེ་དེབ་ (Ledger)། རྩིས་སྡོམ་ (Reports) བཅས་ཀྱི་ནང་ "🖨️ རྩིས་ཤོག་ PDF" དང་ "📥 CSV (Excel)" གནོན་རྟགས་ཡོད། དེས་རྩིས་ཞིབ་པར་འབུལ་རྒྱུའི་ A4 རྩིས་ཤོག་དང་མཚན་རྟགས་ས་מיگ་ཆ་ཚང་ཡོད་པའི་ PDF གྲ་སྒྲིག་བྱེད་ཀྱི་རེད།',
+    aBo: 'ཉིན་རེའི་རྩིས་ཐོ་དང་། དབྱེ་དེབ་ (Ledger)། རྩིས་སྡོམ་ (Reports) བཅས་ཀྱི་ནང་ "🖨️ རྩིས་ཤོག་ PDF" དང་ "📥 CSV (Excel)" གནོན་རྟགས་ཡོད། དེས་རྩིས་ཞིབ་པར་འབུལ་རྒྱུའི་ A4 རྩིས་ཤོག་དང་མཚན་རྟགས་ས་མིག་ཆ་ཚང་ཡོད་པའི་ PDF གྲ་སྒྲིག་བྱེད་ཀྱི་རེད།',
     aEn: 'Use the "🖨️ Print / Save PDF" and "📥 CSV" buttons in the Cashbook, Ledger, or Reports tabs to generate high-contrast A4 audit statements with Tibetan & English labels, opening/closing summaries, and official signature blocks.',
     tags: 'print pdf a4 audit csv excel statement report པར་འདེབས རྩིས་ཤོག རྩིས་ཞིབ'
   }
