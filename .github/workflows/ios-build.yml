@@ -26,7 +26,7 @@ jobs:
           npx cap add ios
           npx cap sync ios
 
-      - name: 4. Configure Apple App Store Info.plist Permissions
+      - name: 4. Generate 1024x1024 Tibetan Account Book App Icon & Configure Info.plist
         run: |
           PLIST="ios/App/App/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Tibetan Account Book'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 'Tibetan Account Book'" "$PLIST"
@@ -38,24 +38,85 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 'Save exported receipt slips and accounting backups to your device.'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :UIRequiresFullScreen bool true" "$PLIST" || true
 
-      - name: 5. Build Unsigned Native iOS .ipa Bundle (For Sideloadly / AltStore / App Store Signing)
+          cat << 'EOF' > generate_icon.swift
+          import AppKit
+          let size = NSSize(width: 1024, height: 1024)
+          let image = NSImage(size: size)
+          image.lockFocus()
+          let rect = NSRect(origin: .zero, size: size)
+          NSColor(red: 0.533, green: 0.075, blue: 0.216, alpha: 1.0).setFill()
+          rect.fill()
+          let borderPath = NSBezierPath(roundedRect: rect.insetBy(dx: 48, dy: 48), xRadius: 180, yRadius: 180)
+          borderPath.lineWidth = 18
+          NSColor(red: 0.992, green: 0.878, blue: 0.278, alpha: 0.9).setStroke()
+          borderPath.stroke()
+          let paragraph = NSMutableParagraphStyle()
+          paragraph.alignment = .center
+          let attrs: [NSAttributedString.Key: Any] = [
+              .font: NSFont.boldSystemFont(ofSize: 340),
+              .foregroundColor: NSColor(red: 0.996, green: 0.953, blue: 0.780, alpha: 1.0),
+              .paragraphStyle: paragraph
+          ]
+          let text = "རྩིས།" as NSString
+          text.draw(in: NSRect(x: 0, y: 240, width: 1024, height: 520), withAttributes: attrs)
+          image.unlockFocus()
+          if let tiff = image.tiffRepresentation,
+             let rep = NSBitmapImageRep(data: tiff),
+             let png = rep.representation(using: .png, properties: [:]) {
+              try? png.write(to: URL(fileURLWithPath: "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"))
+          }
+          EOF
+          swift generate_icon.swift || true
+          rm -f generate_icon.swift
+
+      - name: 5. Configure CocoaPods for Unsigned Build & Compile Native .ipa
         run: |
+          node -e '
+            const fs = require("fs");
+            const podfilePath = "ios/App/Podfile";
+            if (fs.existsSync(podfilePath)) {
+              let pf = fs.readFileSync(podfilePath, "utf8");
+              pf = pf.replace(
+                "assertDeploymentTarget(installer)",
+                "assertDeploymentTarget(installer)\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n      config.build_settings[\"EXPANDED_CODE_SIGN_IDENTITY\"] = \"\"\n    end\n  end"
+              );
+              fs.writeFileSync(podfilePath, pf, "utf8");
+            }
+          '
           cd ios/App
-          xcodebuild -project App.xcodeproj \
-            -scheme App \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            clean build
+          pod install
+
+          if [ -d "App.xcworkspace" ]; then
+            xcodebuild -workspace App.xcworkspace \
+              -scheme App \
+              -configuration Release \
+              -sdk iphoneos \
+              -destination 'generic/platform=iOS' \
+              -derivedDataPath build \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              clean build
+          else
+            xcodebuild -project App.xcodeproj \
+              -scheme App \
+              -configuration Release \
+              -sdk iphoneos \
+              -destination 'generic/platform=iOS' \
+              -derivedDataPath build \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              clean build
+          fi
 
           mkdir -p Payload
           cp -r build/Build/Products/Release-iphoneos/App.app Payload/
-          zip -r ../../Tibetan-Account-Book-iOS.ipa Payload
+          zip -qry ../../Tibetan-Account-Book-iOS.ipa Payload
           cd ../..
-          zip -r Tibetan-Account-Book-Xcode-Project.zip ios/
+          zip -qry Tibetan-Account-Book-Xcode-Project.zip ios/
 
       - name: 6. Upload Native iOS .ipa Installer Artifact
         uses: actions/upload-artifact@v4
