@@ -2238,7 +2238,7 @@ function renderReceiptTab() {
         <button class="action-btn cash-in" onclick="shareReceiptWhatsApp('${escapeHtml(tx.id)}')">
           💬 ${t('WhatsApp ཐོག་བསྐུར།', 'Share on WhatsApp')}
         </button>
-        <button class="action-btn" style="background:#1E293B;color:#FFFFFF;" onclick="window.print()">
+        <button class="action-btn" style="background:#1E293B;color:#FFFFFF;" onclick="printOrExportVoucherSlip('${escapeHtml(tx.id)}')">
           🖨️ ${t('PDF / པར་འདེབས།', 'Print / Save PDF')}
         </button>
       </div>
@@ -3049,8 +3049,8 @@ function renderReportsTab() {
         <button class="action-btn" style="background:#0F172A;color:#FDE047;font-size:11.5px;" onclick="exportBilingualCSV()">
           📥 ${t('རྩིས་ཐོ་ཕྱིར་འདྲེན།', 'Export CSV')}
         </button>
-        <button class="action-btn" style="background:#E2E8F0;color:#1E293B;font-size:11.5px;" onclick="window.print()">
-          🖨️ ${t('ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག་པར་འདེབས།', 'Print Trial & BS')}
+        <button class="action-btn" style="background:#E2E8F0;color:#1E293B;font-size:11.5px;" onclick="printOrExportTrialBalance()">
+          🖨️ ${t('ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག་པར་འདེབས།', 'Print / Save Trial & BS')}
         </button>
       </div>
 
@@ -3759,24 +3759,25 @@ function renderCashBookPdfStatementHtml() {
         <button
           type="button"
           class="action-btn"
-          style="background:#0F172A;color:#FDE047;padding:6px 14px;font-size:12px;font-weight:800;"
-          onclick="window.print()"
+          style="background:#0F172A;color:#FDE047;padding:7px 14px;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;gap:6px;"
+          onclick="exportCashBookStatementDocument()"
+          title="${t('ཡིག་ཆ་ཉར་ཚགས་དང་བརྒྱུད་བསྐུར། (PDF/Print)', 'Save or Share Document (PDF / Print)')}"
         >
-          🖨️ ${t('PDF / པར་འདེབས།', 'Print / Save PDF')}
+          📤 ${t('PDF ཕྱིར་འདྲེན་དང་ཉར་ཚགས།', 'Export / Save PDF')}
         </button>
         <button
           type="button"
           class="mini-btn"
-          style="background:#EFF6FF;color:#1E3A8A;border-color:#93C5FD;padding:6px 10px;font-size:11.5px;font-weight:700;"
+          style="background:#EFF6FF;color:#1E3A8A;border-color:#93C5FD;padding:7px 11px;font-size:12px;font-weight:700;"
           onclick="printCashBookPdfStandalone()"
-          title="${t('ཤོག་ངོས་གསར་པར་འབྱེད་ནས་པར་འདེབས།', 'Open in standalone window')}"
+          title="${t('ཤོག་ངོས་གསར་པར་འབྱེད་ནས་པར་འདེབས།', 'Open in standalone window / Print')}"
         >
-          🗗 ${t('ཤོག་ངོས་གསར་པ།', 'Standalone Window')}
+          🖨️ ${t('པར་འདེབས།', 'Print')}
         </button>
         <button
           type="button"
           class="mini-btn"
-          style="background:#F1F5F9;color:#334155;border-color:#CBD5E1;padding:6px 10px;font-size:11.5px;font-weight:700;"
+          style="background:#F1F5F9;color:#334155;border-color:#CBD5E1;padding:7px 11px;font-size:12px;font-weight:700;"
           onclick="copyCashBookStatementText()"
         >
           📋 ${t('ངོ་བཤུས།', 'Copy Text')}
@@ -3784,7 +3785,7 @@ function renderCashBookPdfStatementHtml() {
         <button
           type="button"
           class="mini-btn"
-          style="padding:6px 10px;font-size:12px;"
+          style="padding:7px 11px;font-size:12px;"
           onclick="closeModal()"
         >
           ✕
@@ -4303,40 +4304,20 @@ function openCashBookPdfModal() {
   document.getElementById('modalBackdrop').classList.add('open');
 }
 
-function printCashBookPdfStandalone() {
-  // On Native iOS Capacitor WKWebView, window.open('', '_blank') is blocked by iOS sandbox;
-  // invoke window.print() directly so our native UIPrintInteractionController sheet opens!
-  if (
-    typeof window !== 'undefined' &&
-    ((window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iosNativePrint) ||
-      window.Capacitor)
-  ) {
-    window.print();
-    return;
-  }
-
+function getCashBookPdfStandaloneHtml() {
   const statementEl = document.getElementById('printableCashBookStatement');
-  if (!statementEl) {
-    window.print();
-    return;
-  }
-
-  const printWin = window.open('', '_blank');
-  if (!printWin) {
-    window.print();
-    return;
-  }
-
+  const innerHtml = statementEl ? statementEl.outerHTML : renderCashBookPdfStatementHtml();
   const langAttr = state.lang === 'en' ? 'en' : 'bo';
   const docTitle =
     state.lang === 'en'
       ? 'Cash Book Statement - Tibetan Account Book'
       : 'ལག་དངུལ་དང་དངུལ་ཁང་གི་རྩིས་དེབ་ཁྲ་མ། • བོད་ཀྱི་རྩིས་དེབ།';
 
-  printWin.document.write(`<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="${langAttr}">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${docTitle}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -4362,6 +4343,8 @@ function printCashBookPdfStandalone() {
       border: 1px solid #CBD5E1 !important;
       padding: 16px !important;
       border-radius: 8px !important;
+      max-width: 960px;
+      margin: 0 auto;
     }
     .statement-header-box {
       text-align: center;
@@ -4423,16 +4406,92 @@ function printCashBookPdfStandalone() {
   </style>
 </head>
 <body>
-  ${statementEl.outerHTML}
+  ${innerHtml}
   <script>
-    window.addEventListener('load', () => {
-      setTimeout(() => { window.print(); }, 250);
-    });
+    if (!window.Capacitor && window.location.protocol !== 'file:') {
+      window.addEventListener('load', () => {
+        setTimeout(() => { try { window.print(); } catch(e){} }, 300);
+      });
+    }
   <\/script>
 </body>
-</html>`);
+</html>`;
+}
 
+async function exportCashBookStatementDocument() {
+  const htmlContent = getCashBookPdfStandaloneHtml();
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+  const book = getActiveBook();
+  const filename = `Tibetan_Account_Statement_${book.id}_${state.periodFrom}_${state.periodTo}.html`;
+  const title = t('ལག་དངུལ་དང་དངུལ་ཁང་གི་རྩིས་དེབ་ཁྲ་མ། (PDF/Print)', 'Cash Book Statement (PDF / Print)');
+  if (typeof shareOrDownloadBackup === 'function') {
+    await shareOrDownloadBackup(blob, filename, title);
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+}
+
+function printCashBookPdfStandalone() {
+  const isCapacitor = typeof window !== 'undefined' && Boolean(window.Capacitor);
+  if (isCapacitor) {
+    exportCashBookStatementDocument();
+    return;
+  }
+
+  const statementEl = document.getElementById('printableCashBookStatement');
+  if (!statementEl) {
+    exportCashBookStatementDocument();
+    return;
+  }
+
+  const printWin = window.open('', '_blank');
+  if (!printWin) {
+    exportCashBookStatementDocument();
+    return;
+  }
+
+  printWin.document.write(getCashBookPdfStandaloneHtml());
   printWin.document.close();
+}
+
+async function printOrExportTrialBalance() {
+  const isCapacitor = typeof window !== 'undefined' && Boolean(window.Capacitor);
+  if (isCapacitor) {
+    const tbCard = document.querySelector('.reports-tab') || document.body;
+    const langAttr = state.lang === 'en' ? 'en' : 'bo';
+    const docTitle = state.lang === 'en' ? 'Trial Balance & Balance Sheet' : 'ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག';
+    const htmlContent = `<!DOCTYPE html>
+<html lang="${langAttr}">
+<head>
+  <meta charset="UTF-8">
+  <title>${docTitle}</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>body{padding:16px;background:#FFF;font-family:sans-serif;} .no-print{display:none!important;}</style>
+</head>
+<body>
+  ${tbCard.innerHTML}
+</body>
+</html>`;
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+    const filename = `Trial_Balance_BS_${state.activeBookId}.html`;
+    await shareOrDownloadBackup(blob, filename, docTitle);
+    return;
+  }
+  window.print();
+}
+
+async function printOrExportVoucherSlip(txId) {
+  const isCapacitor = typeof window !== 'undefined' && Boolean(window.Capacitor);
+  if (isCapacitor) {
+    shareReceiptWhatsApp(txId);
+    return;
+  }
+  window.print();
 }
 
 function copyCashBookStatementText() {
