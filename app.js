@@ -4408,12 +4408,10 @@ function getCashBookPdfStandaloneHtml() {
 <body>
   ${innerHtml}
   <script>
-    if (!window.Capacitor && window.location.protocol !== 'file:') {
-      window.addEventListener('load', () => {
-        setTimeout(() => { try { window.print(); } catch(e){} }, 300);
-      });
-    }
-  <\/script>
+    window.addEventListener('load', () => {
+      setTimeout(() => { try { window.print(); } catch(e){} }, 250);
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -4459,30 +4457,215 @@ function printCashBookPdfStandalone() {
   printWin.document.close();
 }
 
-async function printOrExportTrialBalance() {
-  const isCapacitor = typeof window !== 'undefined' && Boolean(window.Capacitor);
-  if (isCapacitor) {
-    const tbCard = document.querySelector('.reports-tab') || document.body;
-    const langAttr = state.lang === 'en' ? 'en' : 'bo';
-    const docTitle = state.lang === 'en' ? 'Trial Balance & Balance Sheet' : 'ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག';
-    const htmlContent = `<!DOCTYPE html>
+function getPrintableTrialBalanceHtml() {
+  const book = getActiveBook();
+  const tb = computeTrialBalanceAndBS();
+  const metrics = computeBookMetrics();
+  const langAttr = state.lang === 'en' ? 'en' : 'bo';
+  const docTitle =
+    state.lang === 'en'
+      ? 'Trial Balance & Balance Sheet - Tibetan Account Book'
+      : 'ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག • བོད་ཀྱི་རྩིས་དེབ།';
+
+  const rowsHtml = tb.rows
+    .map(r => {
+      const { drColor, crColor } = getHeadGroupDrCrColors(r.head.group);
+      const openColor = getHeadBalanceSideColor(r.head.group, r.openNet);
+      const closeColor = getHeadBalanceSideColor(r.head.group, r.closeNet);
+      const openSideLabel =
+        r.openNet > 0
+          ? state.lang === 'en'
+            ? 'Dr'
+            : 'གཡོན།'
+          : state.lang === 'en'
+          ? 'Cr'
+          : 'གཡས།';
+      const closeSideLabel =
+        r.closeNet > 0
+          ? state.lang === 'en'
+            ? 'Dr'
+            : 'གཡོན།'
+          : state.lang === 'en'
+          ? 'Cr'
+          : 'གཡས།';
+      const openStr =
+        r.openNet === 0
+          ? '—'
+          : `<span style="color:${openColor};">${formatMoney(Math.abs(r.openNet))} <small>${openSideLabel}</small></span>`;
+      const closeStr =
+        r.closeNet === 0
+          ? '0'
+          : `<span style="color:${closeColor};">${formatMoney(Math.abs(r.closeNet))} <small style="color:${closeColor};">${closeSideLabel}</small></span>`;
+      return `
+        <tr>
+          <td style="font-weight:700;">${r.head.icon} ${t(r.head.bo, r.head.en)} <small style="color:#64748B;">[${getHeadGroupShortText(r.head.group)}]</small></td>
+          <td style="text-align:right;color:${openColor};font-weight:600;">${openStr}</td>
+          <td style="text-align:right;color:${r.dr > 0 ? drColor : '#64748B'};font-weight:600;">${r.dr > 0 ? formatMoney(r.dr) : '—'}</td>
+          <td style="text-align:right;color:${r.cr > 0 ? crColor : '#64748B'};font-weight:600;">${r.cr > 0 ? formatMoney(r.cr) : '—'}</td>
+          <td style="text-align:right;color:${closeColor};font-weight:800;">${closeStr}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
 <html lang="${langAttr}">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${docTitle}</title>
-  <link rel="stylesheet" href="styles.css">
-  <style>body{padding:16px;background:#FFF;font-family:sans-serif;} .no-print{display:none!important;}</style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Tibetan:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    @page { size: A4 portrait; margin: 12mm 10mm 14mm 10mm; }
+    html, body {
+      background: #FFFFFF !important;
+      padding: 16px;
+      margin: 0;
+      font-family: 'Noto Sans Tibetan', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #0F172A;
+      font-size: 13px;
+      line-height: 1.68;
+    }
+    .no-print { display: none !important; }
+    .tb-print-sheet {
+      border: 1px solid #CBD5E1;
+      padding: 16px;
+      border-radius: 8px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .statement-header-box {
+      text-align: center;
+      border-bottom: 1.5px solid #0F172A;
+      padding-top: 14px;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+    .statement-yiggo {
+      font-size: 19px;
+      color: #881337;
+      font-weight: 800;
+      line-height: 2.1;
+      display: block;
+    }
+    .fin-table { width: 100%; border-collapse: collapse; margin-top: 8px; margin-bottom: 14px; }
+    .fin-table th, .fin-table td { border: 1px solid #CBD5E1; padding: 5px 8px; font-size: 12px; }
+    .fin-table th { background: #F1F5F9; font-weight: 800; }
+    .bs-box { border: 1.5px solid #881337; border-radius: 8px; padding: 12px; margin-top: 14px; background: #FFFDF9; }
+    .statement-seal-box { display: flex; justify-content: space-between; margin-top: 24px; padding-top: 16px; border-top: 1px dashed #94A3B8; }
+    @media print {
+      body { padding: 0 !important; }
+      .tb-print-sheet { border: none !important; }
+    }
+  </style>
 </head>
 <body>
-  ${tbCard.innerHTML}
+  <div class="tb-print-sheet">
+    <div class="statement-header-box">
+      <span class="statement-yiggo">༄༅། །བོད་ཀྱི་རྩིས་དེབ། • Tibetan Account Book</span>
+      <div style="font-size:16px;font-weight:900;color:#0F172A;margin-top:4px;">
+        ⚖️ ${t('ཚོད་བལྟའི་རྩིས་ཤོག • མ་རྩ་ཁུངས་བསྐྱེལ་རྩིས་ཤོག', 'OFFICIAL TRIAL BALANCE & BALANCE SHEET')}
+      </div>
+      <div style="font-size:14px;font-weight:800;color:#881337;margin-top:4px;">
+        ${escapeHtml(book.bo)} (${escapeHtml(book.en)})
+      </div>
+      <div style="font-size:11.5px;color:#64748B;margin-top:4px;">
+        📅 <strong>${t('རྩིས་དུས།', 'Period')}:</strong> ${state.periodFrom} → ${state.periodTo} &nbsp;|&nbsp; 💱 <strong>${t('དངུལ་ལོར།', 'Currency')}:</strong> ${state.currency}
+      </div>
+    </div>
+
+    <!-- Trial Balance Table -->
+    <table class="fin-table">
+      <thead>
+        <tr>
+          <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
+          <th style="text-align:right;">${t('ཐོག་མ།', 'Opening')}</th>
+          <th style="text-align:right;">${t('གཡོན།', 'Debit')}</th>
+          <th style="text-align:right;">${t('གཡས།', 'Credit')}</th>
+          <th style="text-align:right;">${t('མཐའ་མ།', 'Closing')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+      <tfoot>
+        <tr style="background:#FEF3C7;font-weight:900;color:#4C0519;">
+          <td>${t('བསྡོམས་ཐོབ། (གཡོན། = གཡས།)', 'Total Tally (Dr = Cr)')}</td>
+          <td style="text-align:right;">${formatMoney(tb.totalOpenDr)} <small>${state.lang === 'en' ? 'Dr=Cr' : 'གཡོན།=གཡས།'}</small></td>
+          <td style="text-align:right;">${formatMoney(tb.totalPeriodDr)}</td>
+          <td style="text-align:right;">${formatMoney(tb.totalPeriodCr)}</td>
+          <td style="text-align:right;">${formatMoney(tb.totalClosingDr)} <small>${state.lang === 'en' ? 'Dr=Cr' : 'གཡོན།=གཡས།'}</small></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <!-- Balance Sheet Summary Box -->
+    <div class="bs-box">
+      <div style="font-size:14px;font-weight:900;color:#4C0519;text-align:center;margin-bottom:8px;">
+        🏛️ ${t('ལྷག་ཤོག • མ་རྩ་ཁུངས་བསྐྱེལ་རྩིས་ཤོག (Balance Sheet Summary)', 'Balance Sheet Summary (Assets = Liabilities + Capital)')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:6px;padding:8px 10px;">
+          <div style="font-weight:800;color:#166534;font-size:12.5px;margin-bottom:4px;">📥 ${t('རྒྱུ་དངོས་ཁྱོན་བསྡོམས། (Total Assets)', 'Total Assets')}: ${formatMoney(metrics.totalAssetsValue)}</div>
+          <div style="font-size:11.5px;color:#15803D;">• ${t('ལག་དངུལ་དང་དངུལ་ཁང་།', 'Cash & Bank')}: ${formatMoney(metrics.totalLiquid)}</div>
+          <div style="font-size:11.5px;color:#15803D;">• ${t('མི་སྣ་བསྡུ་དགོས་དང་སྔ་འདོན།', 'Receivables & Advances')}: ${formatMoney(metrics.totalPartyReceivable)}</div>
+        </div>
+        <div style="background:#FFF1F2;border:1px solid #FECDD3;border-radius:6px;padding:8px 10px;">
+          <div style="font-weight:800;color:#9F1239;font-size:12.5px;margin-bottom:4px;">📤 ${t('བུ་ལོན་དང་མ་རྩ་ཁྱོན་བསྡོམས།', 'Liabilities & Capital')}: ${formatMoney(metrics.totalLiabilitiesAndCapital)}</div>
+          <div style="font-size:11.5px;color:#BE123C;">• ${t('མཐའ་མའི་མ་རྩ་ལྷག་མ།', 'Closing Capital Fund')}: ${formatMoney(metrics.closingCapitalFund)}</div>
+          <div style="font-size:11.5px;color:#BE123C;">• ${t('མི་སྣ་སྤྲོད་དགོས་བུ་ལོན།', 'Payables & Loans')}: ${formatMoney(metrics.totalPartyPayable)}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Official Seal & Signatures -->
+    <div class="statement-seal-box">
+      <div style="text-align:center;">
+        <div style="height:36px;border-bottom:1.5px solid #64748B;width:120px;margin:0 auto;"></div>
+        <div style="margin-top:4px;font-weight:800;font-size:11px;color:#1E293B;">✍️ ${t('རྩིས་པ།', 'Accountant')}</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="height:36px;border-bottom:1.5px solid #64748B;width:120px;margin:0 auto;"></div>
+        <div style="margin-top:4px;font-weight:800;font-size:11px;color:#1E293B;">🔍 ${t('ཞིབ་བཤེར་པ།', 'Audited by')}</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="height:36px;border-bottom:1.5px solid #64748B;width:120px;margin:0 auto;"></div>
+        <div style="margin-top:4px;font-weight:800;font-size:11px;color:#1E293B;">👑 ${t('འགན་འཛིན།', 'Approved by Director')}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    window.addEventListener('load', () => {
+      setTimeout(() => { try { window.print(); } catch(e){} }, 250);
+    });
+  </script>
 </body>
 </html>`;
+}
+
+function printOrExportTrialBalance() {
+  const isCapacitor = typeof window !== 'undefined' && Boolean(window.Capacitor);
+  const htmlContent = getPrintableTrialBalanceHtml();
+
+  if (isCapacitor) {
     const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
     const filename = `Trial_Balance_BS_${state.activeBookId}.html`;
-    await shareOrDownloadBackup(blob, filename, docTitle);
+    const docTitle = state.lang === 'en' ? 'Trial Balance & Balance Sheet' : 'ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག';
+    shareOrDownloadBackup(blob, filename, docTitle);
     return;
   }
-  window.print();
+
+  const printWin = window.open('', '_blank');
+  if (!printWin) {
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+    const filename = `Trial_Balance_BS_${state.activeBookId}.html`;
+    shareOrDownloadBackup(blob, filename, 'Trial Balance & Balance Sheet');
+    return;
+  }
+  printWin.document.write(htmlContent);
+  printWin.document.close();
 }
 
 async function printOrExportVoucherSlip(txId) {
