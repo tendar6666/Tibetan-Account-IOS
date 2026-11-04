@@ -1,0 +1,72 @@
+name: Build Native iOS App (.ipa & Xcode Project)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build iOS Native App on macOS Cloud
+    runs-on: macos-14
+
+    steps:
+      - name: 1. Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 2. Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 3. Install Capacitor & Generate Native iOS Project
+        run: |
+          npm install
+          npm run prepare-www
+          npx cap add ios
+          npx cap sync ios
+
+      - name: 4. Configure Apple App Store Info.plist Permissions
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Tibetan Account Book'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 'Tibetan Account Book'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '2.0.0'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '2'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Attach photos of bills, receipts, and vouchers directly to your accounting entries.'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Select bill and receipt photos from your library to attach to accounting vouchers.'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 'Save exported receipt slips and accounting backups to your device.'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Add :UIRequiresFullScreen bool true" "$PLIST" || true
+
+      - name: 5. Build Unsigned Native iOS .ipa Bundle (For Sideloadly / AltStore / App Store Signing)
+        run: |
+          cd ios/App
+          xcodebuild -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -r ../../Tibetan-Account-Book-iOS.ipa Payload
+          cd ../..
+          zip -r Tibetan-Account-Book-Xcode-Project.zip ios/
+
+      - name: 6. Upload Native iOS .ipa Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tibetan-Account-Book-iOS-IPA
+          path: Tibetan-Account-Book-iOS.ipa
+          retention-days: 90
+
+      - name: 7. Upload Complete Xcode Project (For App Store Connect Submission)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tibetan-Account-Book-Xcode-Project
+          path: Tibetan-Account-Book-Xcode-Project.zip
+          retention-days: 90

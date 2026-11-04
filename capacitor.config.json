@@ -1,0 +1,17 @@
+{
+  "appId": "com.tenzintendar.tibetanaccountbook",
+  "appName": "Tibetan Account Book",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "backgroundColor": "#881337",
+  "ios": {
+    "contentInset": "never",
+    "preferredContentMode": "mobile",
+    "backgroundColor": "#881337",
+    "limitsNavigationsToAppBoundDomains": true
+  },
+  "server": {
+    "iosScheme": "capacitor",
+    "hostname": "localhost"
+  }
+}

@@ -8,3 +8,10 @@ desktop.ini
 .idea/
 *.tmp
 *.log
+
+# Native Build & Node Artifacts (Generated automatically on GitHub Actions)
+node_modules/
+www/
+ios/
+build/
+*.ipa

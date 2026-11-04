@@ -1,0 +1,18 @@
+{
+  "name": "tibetan-account-book-ios",
+  "version": "2.0.0",
+  "description": "བོད་ཀྱི་རྩིས་དེབ། • Tibetan Account Book — Native iOS App (100% Offline Double-Entry & Simple Cashbook)",
+  "private": true,
+  "scripts": {
+    "prepare-www": "node -e \"const fs=require('fs'); fs.mkdirSync('www',{recursive:true}); ['index.html','app.js','styles.css','sw.js','manifest.json','privacy.html'].forEach(f=>{if(fs.existsSync(f))fs.copyFileSync(f,'www/'+f);});\"",
+    "ios:init": "npm run prepare-www && npx cap add ios",
+    "ios:sync": "npm run prepare-www && npx cap sync ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/ios": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}
