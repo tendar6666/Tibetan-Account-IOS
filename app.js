@@ -178,8 +178,8 @@ const DEFAULT_ACCOUNT_HEADS = [
 
   // Party / Advance / Asset & Liability Account Heads (Dr = Asset Receivable, Cr = Liability Payable)
   { id: 'party_advance', group: 'party_jv', icon: '🤝', bo: 'ལས་མིའི་སྔ་འདོན།', en: 'Staff Advance A/c' },
-  { id: 'party_pema', group: 'party_jv', icon: '👤', bo: 'པདྨ་ཆོས་སྒྲོན། (ཚོང་ཤག)', en: 'Pema Chodon (Customer A/c)' },
-  { id: 'party_ludhiana', group: 'party_jv', icon: '🏭', bo: 'ལུ་དྷི་ཡ་ན་བཟོ་གྲྭ།', en: 'Ludhiana Supplier A/c' },
+  { id: 'party_pema', bookId: 'book_shop', group: 'party_jv', icon: '👤', bo: 'པདྨ་ཆོས་སྒྲོན། (ཚོང་ཤག)', en: 'Pema Chodon (Customer A/c)' },
+  { id: 'party_ludhiana', bookId: 'book_shop', group: 'party_jv', icon: '🏭', bo: 'ལུ་དྷི་ཡ་ན་བཟོ་གྲྭ།', en: 'Ludhiana Supplier A/c' },
 
   // Fund Account Heads (མ་དངུལ་རྩིས་འགོ། • Capital & Designated Funds: General Fund, Toilet Fund, etc.)
   { id: 'fund_general', group: 'fund', icon: '🏛️', bo: 'སྤྱིར་བཏང་མ་དངུལ།', en: 'General Fund' },
@@ -484,6 +484,10 @@ function sanitizeRemovedUpiHead(s) {
       sbi.bo = 'SBI དངུལ་ཁང་།';
       sbi.en = 'SBI Bank A/c (incl. UPI/GPay)';
     }
+    const pema = s.accountHeads.find(h => h.id === 'party_pema');
+    if (pema && !pema.bookId) pema.bookId = 'book_shop';
+    const ludhiana = s.accountHeads.find(h => h.id === 'party_ludhiana');
+    if (ludhiana && !ludhiana.bookId) ludhiana.bookId = 'book_shop';
   }
   // Remap any legacy transactions that used head_upi or head_cheque to head_sbi (Bank)
   if (Array.isArray(s.transactions)) {
@@ -530,7 +534,8 @@ function sanitizeAndValidateState(incoming) {
     ...raw,
     books: raw.books.map(b => ({
       ...b,
-      openingBalances: b.openingBalances && typeof b.openingBalances === 'object' ? { ...b.openingBalances } : {}
+      openingBalances: b.openingBalances && typeof b.openingBalances === 'object' ? { ...b.openingBalances } : {},
+      deletedHeadIds: Array.isArray(b.deletedHeadIds) ? [...b.deletedHeadIds] : []
     })),
     transactions: raw.transactions.map(tx => {
       const cleanTx = { ...tx };
@@ -707,6 +712,22 @@ function getHead(headId) {
   );
 }
 
+// Per-Book Account Head Isolation (རྩིས་དེབ་སོ་སོའི་རྩིས་འགོ་ལོགས་སུ་དབྱེ་བ།):
+// Core default heads without a bookId are available as base templates, while any
+// custom or book-specific head created inside an Account Book is strictly scoped to that bookId.
+function isHeadInBook(head, bookId = state.activeBookId) {
+  if (!head) return false;
+  const book = state.books ? state.books.find(b => b.id === bookId) : null;
+  if (book && Array.isArray(book.deletedHeadIds) && book.deletedHeadIds.includes(head.id)) {
+    return false;
+  }
+  return !head.bookId || head.bookId === bookId;
+}
+
+function getBookAccountHeads(bookId = state.activeBookId) {
+  return state.accountHeads.filter(h => isHeadInBook(h, bookId));
+}
+
 // Returns the Account Head Group badge HTML to display below each Account Head in "Select Account Head"
 function getHeadGroupBadgeHtml(group) {
   if (group === 'income') {
@@ -740,6 +761,27 @@ function getHeadGroupLabel(group) {
   return t('🏦 ལག་དངུལ་དང་དངུལ་ཁང་།', '🏦 Cash & Bank');
 }
 
+// Group-Aware Debit & Credit Color Coding for Trial Balance & Ledger:
+// 1. Cash & Bank (cash_bank): Debit (གཡོན། / Cash In) = Green (#15803D), Credit (གཡས། / Cash Out) = Red (#B91C1C)
+// 2. Fund / General Fund (fund / capital_fund): Credit (གཡས།) = Green (#15803D), Debit (གཡོན།) = Red (#B91C1C)
+// 3. Party & Advance (party_jv): Credit (གཡས།) = Green (#15803D), Debit (གཡོན།) = Red (#B91C1C)
+// 4. Income (income): Green (#15803D) for Credit / Income, Red (#B91C1C) for Debit reversal
+// 5. Expense (expense): Red (#B91C1C) for Debit / Expense, Green (#15803D) for Credit refund
+function getHeadGroupDrCrColors(group) {
+  if (group === 'cash_bank') {
+    return { drColor: '#15803D', crColor: '#B91C1C' };
+  }
+  // For fund, capital_fund, party_jv, income, and expense:
+  // Debit (གཡོན།) is Red (#B91C1C) and Credit (གཡས།) is Green (#15803D)
+  return { drColor: '#B91C1C', crColor: '#15803D' };
+}
+
+function getHeadBalanceSideColor(group, netVal) {
+  if (!netVal || netVal === 0) return '#64748B';
+  const { drColor, crColor } = getHeadGroupDrCrColors(group);
+  return netVal > 0 ? drColor : crColor;
+}
+
 function getActiveBook() {
   const b = state.books.find(b => b.id === state.activeBookId) || state.books[0];
   if (!b.openingBalances) b.openingBalances = {};
@@ -747,6 +789,8 @@ function getActiveBook() {
 }
 
 function getHeadOpeningBalance(headId) {
+  const head = state.accountHeads ? state.accountHeads.find(h => h.id === headId) : null;
+  if (head && (head.group === 'income' || head.group === 'expense')) return 0;
   const book = getActiveBook();
   return Number((book.openingBalances && book.openingBalances[headId]) || 0);
 }
@@ -791,9 +835,10 @@ function getVoucherDisplayBadge(vType) {
 function computeBookMetrics() {
   const txs = getBookTransactions();
 
-  let openingCash = getHeadOpeningBalance('head_cash');
+  const hasCashHead = getBookAccountHeads().some(h => h.id === 'head_cash' && h.group === 'cash_bank');
+  let openingCash = hasCashHead ? getHeadOpeningBalance('head_cash') : 0;
   let openingBank = 0;
-  state.accountHeads
+  getBookAccountHeads()
     .filter(h => h.group === 'cash_bank' && h.id !== 'head_cash')
     .forEach(h => {
       openingBank += getHeadOpeningBalance(h.id);
@@ -873,7 +918,7 @@ function computeTrialBalanceAndBS() {
   const txs = getBookTransactions();
   const map = {};
 
-  state.accountHeads.forEach(h => {
+  getBookAccountHeads().forEach(h => {
     const openVal = getHeadOpeningBalance(h.id);
     map[h.id] = {
       head: h,
@@ -1953,7 +1998,7 @@ function renderHeadsAndKhataTab() {
     <!-- Account Heads Grouped Display -->
     ${groupLabels
       .map(g => {
-        const heads = state.accountHeads.filter(h => h.group === g.key);
+        const heads = getBookAccountHeads().filter(h => h.group === g.key);
         return `
         <div class="report-card" style="padding:12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -1964,24 +2009,31 @@ function renderHeadsAndKhataTab() {
             ${heads
               .map(h => {
                 const cNet = closeMap[h.id] || 0;
+                const balColor = getHeadBalanceSideColor(h.group, cNet);
                 let bsTag = '';
                 if (h.group === 'fund' && cNet !== 0) {
                   bsTag = isBasic
-                    ? `<small style="color:#6D28D9;font-weight:800;">[${t('མ་དངུལ།', 'Fund')}: ${formatMoney(Math.abs(cNet))}]</small>`
-                    : `<small style="color:#6D28D9;font-weight:800;">[${t('མ་དངུལ།', 'Fund')}: ${formatMoney(Math.abs(cNet))} ${cNet <= 0 ? (state.lang === 'en' ? 'Cr' : 'གཡས།') : (state.lang === 'en' ? 'Dr Deficit' : 'གཡོན།')}]</small>`;
+                    ? `<small style="color:${balColor};font-weight:800;">[${t('མ་དངུལ།', 'Fund')}: ${formatMoney(Math.abs(cNet))}]</small>`
+                    : `<small style="color:${balColor};font-weight:800;">[${t('མ་དངུལ།', 'Fund')}: ${formatMoney(Math.abs(cNet))} ${cNet <= 0 ? (state.lang === 'en' ? 'Cr' : 'གཡས།') : (state.lang === 'en' ? 'Dr Deficit' : 'གཡོན།')}]</small>`;
                 } else if (!isBasic && (h.group === 'party_jv' || h.group === 'cash_bank') && cNet !== 0) {
                   bsTag =
                     cNet > 0
-                      ? `<small style="color:#15803D;font-weight:800;">[${t('རྒྱུ་དངོས།', 'Asset')}: ${formatMoney(cNet)} ${state.lang === 'en' ? 'Dr' : 'གཡོན།'}]</small>`
-                      : `<small style="color:#B91C1C;font-weight:800;">[${t('བུ་ལོན།', 'Liability')}: ${formatMoney(Math.abs(cNet))} ${state.lang === 'en' ? 'Cr' : 'གཡས།'}]</small>`;
+                      ? `<small style="color:${balColor};font-weight:800;">[${t('རྒྱུ་དངོས།', 'Asset')}: ${formatMoney(cNet)} ${state.lang === 'en' ? 'Dr' : 'གཡོན།'}]</small>`
+                      : `<small style="color:${balColor};font-weight:800;">[${t('བུ་ལོན།', 'Liability')}: ${formatMoney(Math.abs(cNet))} ${state.lang === 'en' ? 'Cr' : 'གཡས།'}]</small>`;
                 }
                 return `
                 <span
                   onclick="openHeadInAccountLedger('${h.id}')"
                   title="${t('དབྱེ་དེབ་ནང་གཟིགས།', 'Open in Ledger')}"
-                  style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;cursor:pointer;"
+                  style="display:inline-flex;align-items:center;gap:5px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:600;cursor:pointer;"
                 >
-                  ${h.icon} ${t(h.bo, h.en)} ${bsTag}
+                  <span>${h.icon} ${t(h.bo, h.en)} ${bsTag}</span>
+                  <button
+                    type="button"
+                    onclick="event.stopPropagation();openEditHeadModal('${h.id}')"
+                    title="${t('རྩིས་འགོ་བཟོ་བཅོས།', 'Edit Account Head')}"
+                    style="border:none;background:#E2E8F0;color:#334155;border-radius:5px;padding:1px 5px;font-size:10.5px;cursor:pointer;line-height:1.3;"
+                  >✏️</button>
                 </span>
               `;
               })
@@ -2499,10 +2551,11 @@ function renderAccountLedgerCardsHtml() {
     .slice()
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
+  const bookHeads = getBookAccountHeads();
   const candidateHeads =
     selectedHeadId === 'ALL'
-      ? state.accountHeads
-      : state.accountHeads.filter(h => h.id === selectedHeadId);
+      ? bookHeads
+      : bookHeads.filter(h => h.id === selectedHeadId);
 
   const drShort = state.lang === 'en' ? 'Dr' : 'གཡོན།';
   const crShort = state.lang === 'en' ? 'Cr' : 'གཡས།';
@@ -2579,14 +2632,17 @@ function renderAccountLedgerCardsHtml() {
     const closeNet = runningNet;
     const openSide = openNet >= 0 ? drShort : crShort;
     const closeSide = closeNet >= 0 ? drShort : crShort;
+    const { drColor, crColor } = getHeadGroupDrCrColors(head.group);
+    const openColor = getHeadBalanceSideColor(head.group, openNet);
+    const closeColor = getHeadBalanceSideColor(head.group, closeNet);
 
     const isCashBankHead = head.group === 'cash_bank';
     const drHeaderLabel = isCashBankHead
-      ? t('གཡོན་རྩིས།/བྱུང་།', 'Debit (Receipts) Dr')
-      : t('གཡོན་རྩིས།/སོང་།', 'Debit Dr');
+      ? t('གཡོན། (བྱུང་།)', 'Debit (In)')
+      : t('གཡོན།', 'Debit');
     const crHeaderLabel = isCashBankHead
-      ? t('གཡས་རྩིས།/སོང་།', 'Credit (Payments) Cr')
-      : t('གཡས་རྩིས།/བྱུང་།', 'Credit Cr');
+      ? t('གཡས། (སོང་།)', 'Credit (Out)')
+      : t('གཡས།', 'Credit');
 
     cardsHtml.push(`
       <div class="report-card" style="border:1.5px solid #CBD5E1;padding:12px;margin-bottom:12px;">
@@ -2595,6 +2651,13 @@ function renderAccountLedgerCardsHtml() {
           <div>
             <div style="font-size:14.5px;font-weight:800;color:#4C0519;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span>${head.icon} ${t(head.bo, head.en)}</span>
+              <button
+                type="button"
+                class="mini-btn no-print"
+                style="padding:2px 6px;font-size:10.5px;"
+                onclick="openEditHeadModal('${head.id}')"
+                title="${t('རྩིས་འགོ་བཟོ་བཅོས།', 'Edit Account Head')}"
+              >✏️ ${t('བཟོ་བཅོས།', 'Edit')}</button>
             </div>
             <div style="font-size:10.5px;color:#0369A1;font-weight:700;margin-top:2px;">
               [${getHeadGroupLabel(head.group)}]
@@ -2603,11 +2666,11 @@ function renderAccountLedgerCardsHtml() {
           <div style="text-align:right;">
             <div style="font-size:10.5px;color:#6C6C70;font-weight:700;">
               ${t('ཐོག་མ།', 'Opening')}:
-              <strong style="color:#0369A1;">
+              <strong style="color:${openColor};">
                 ${openNet === 0 ? '—' : `${formatMoney(Math.abs(openNet))} ${openSide}`}
               </strong>
             </div>
-            <div style="font-size:12px;font-weight:900;color:${closeNet >= 0 ? '#15803D' : '#B91C1C'};margin-top:2px;">
+            <div style="font-size:12px;font-weight:900;color:${closeColor};margin-top:2px;">
               ${t('མཐའ་མ།', 'Closing')}:
               ${closeNet === 0 ? '0' : `${formatMoney(Math.abs(closeNet))} ${closeSide}`}
             </div>
@@ -2621,8 +2684,8 @@ function renderAccountLedgerCardsHtml() {
               <tr>
                 <th style="text-align:left;">${t('ཚེས།', 'Date')}</th>
                 <th style="text-align:left;">${t('ཁ་གཏད་རྩིས་འགོ་དང་གསལ་བཤད།', 'Particulars / Narration')}</th>
-                <th style="text-align:right;">${drHeaderLabel}</th>
-                <th style="text-align:right;">${crHeaderLabel}</th>
+                <th style="text-align:right;color:${drColor};">${drHeaderLabel}</th>
+                <th style="text-align:right;color:${crColor};">${crHeaderLabel}</th>
                 <th style="text-align:right;">${t('ལྷག་མ།', 'Balance')}</th>
               </tr>
             </thead>
@@ -2632,9 +2695,9 @@ function renderAccountLedgerCardsHtml() {
                   ? `<tr style="background:#F0F9FF;">
                       <td style="font-size:10.5px;color:#0369A1;font-weight:700;">${state.periodFrom}</td>
                       <td style="font-weight:700;color:#0369A1;">🏁 ${t('ཐོག་མའི་ལྷག་མ།', 'Opening Balance b/f')}</td>
-                      <td style="text-align:right;color:#15803D;font-weight:700;">${openNet > 0 ? formatMoney(openNet) : '—'}</td>
-                      <td style="text-align:right;color:#B91C1C;font-weight:700;">${openNet < 0 ? formatMoney(Math.abs(openNet)) : '—'}</td>
-                      <td style="text-align:right;font-weight:800;color:#0369A1;">${formatMoney(Math.abs(openNet))} <small>${openSide}</small></td>
+                      <td style="text-align:right;color:${drColor};font-weight:700;">${openNet > 0 ? formatMoney(openNet) : '—'}</td>
+                      <td style="text-align:right;color:${crColor};font-weight:700;">${openNet < 0 ? formatMoney(Math.abs(openNet)) : '—'}</td>
+                      <td style="text-align:right;font-weight:800;color:${openColor};">${formatMoney(Math.abs(openNet))} <small>${openSide}</small></td>
                     </tr>`
                   : ''
               }
@@ -2648,6 +2711,7 @@ function renderAccountLedgerCardsHtml() {
                   : visibleRows
                       .map(r => {
                         const balSide = r.runningNet >= 0 ? drShort : crShort;
+                        const rowBalColor = getHeadBalanceSideColor(head.group, r.runningNet);
                         const oppLabel = r.isDr
                           ? `📤 ${t('གང་ནས།', 'From')}: ${r.oppositeHead.icon} ${t(r.oppositeHead.bo, r.oppositeHead.en)}`
                           : `📥 ${t('ལ་བཏང་།', 'To')}: ${r.oppositeHead.icon} ${t(r.oppositeHead.bo, r.oppositeHead.en)}`;
@@ -2661,13 +2725,13 @@ function renderAccountLedgerCardsHtml() {
                               <div style="font-weight:700;font-size:11.5px;color:#1E293B;">${oppLabel}</div>
                               <div style="font-size:10.5px;color:#6C6C70;">${escapeHtml(t(r.tx.partyBo || r.tx.noteBo, r.tx.partyEn || r.tx.noteEn))}</div>
                             </td>
-                            <td style="text-align:right;color:#15803D;font-weight:700;">
+                            <td style="text-align:right;color:${drColor};font-weight:700;">
                               ${r.drAmt > 0 ? formatMoney(r.drAmt) : '—'}
                             </td>
-                            <td style="text-align:right;color:#B91C1C;font-weight:700;">
+                            <td style="text-align:right;color:${crColor};font-weight:700;">
                               ${r.crAmt > 0 ? formatMoney(r.crAmt) : '—'}
                             </td>
-                            <td style="text-align:right;font-weight:800;color:${r.runningNet >= 0 ? '#15803D' : '#B91C1C'};">
+                            <td style="text-align:right;font-weight:800;color:${rowBalColor};">
                               ${r.runningNet === 0 ? '0' : `${formatMoney(Math.abs(r.runningNet))} <small>${balSide}</small>`}
                             </td>
                           </tr>
@@ -2679,9 +2743,9 @@ function renderAccountLedgerCardsHtml() {
             <tfoot>
               <tr style="background:#FEF3C7;font-weight:900;color:#4C0519;">
                 <td colspan="2">${t('ཁྱོན་བསྡོམས་དང་མཐའ་མའི་ལྷག་མ།', 'Total & Closing Balance')}</td>
-                <td style="text-align:right;color:#15803D;">${formatMoney(totalDr)}</td>
-                <td style="text-align:right;color:#B91C1C;">${formatMoney(totalCr)}</td>
-                <td style="text-align:right;">
+                <td style="text-align:right;color:${drColor};">${formatMoney(totalDr)}</td>
+                <td style="text-align:right;color:${crColor};">${formatMoney(totalCr)}</td>
+                <td style="text-align:right;color:${closeColor};">
                   ${closeNet === 0 ? '0' : `${formatMoney(Math.abs(closeNet))} <small>${closeSide}</small>`}
                 </td>
               </tr>
@@ -2746,7 +2810,7 @@ function renderAccountLedgerTab() {
           </option>
           ${groups
             .map(g => {
-              const gHeads = state.accountHeads.filter(h => h.group === g.key);
+              const gHeads = getBookAccountHeads().filter(h => h.group === g.key);
               return `
                 <optgroup label="${t(g.bo, g.en)}">
                   ${gHeads
@@ -2996,14 +3060,17 @@ function renderReportsTab() {
             <tr>
               <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
               <th style="text-align:right;">${t('ཐོག་མ།', 'Opening')}</th>
-              <th style="text-align:right;">${t('གཡོན་རྩིས།/སོང་།', 'Debit Dr')}</th>
-              <th style="text-align:right;">${t('གཡས་རྩིས།/བྱུང་།', 'Credit Cr')}</th>
+              <th style="text-align:right;">${t('གཡོན།', 'Debit')}</th>
+              <th style="text-align:right;">${t('གཡས།', 'Credit')}</th>
               <th style="text-align:right;">${t('མཐའ་མ།', 'Closing')}</th>
             </tr>
           </thead>
           <tbody>
             ${tb.rows
               .map(r => {
+                const { drColor, crColor } = getHeadGroupDrCrColors(r.head.group);
+                const openColor = getHeadBalanceSideColor(r.head.group, r.openNet);
+                const closeColor = getHeadBalanceSideColor(r.head.group, r.closeNet);
                 const openSideLabel =
                   r.openNet > 0
                     ? state.lang === 'en'
@@ -3023,27 +3090,25 @@ function renderReportsTab() {
                 const openStr =
                   r.openNet === 0
                     ? '—'
-                    : `${formatMoney(Math.abs(r.openNet))} <small>${openSideLabel}</small>`;
+                    : `<span style="color:${openColor};">${formatMoney(Math.abs(r.openNet))} <small>${openSideLabel}</small></span>`;
                 const closeStr =
                   r.closeNet === 0
                     ? '0'
-                    : `${formatMoney(Math.abs(r.closeNet))} <small style="color:${
-                        r.closeNet > 0 ? '#15803D' : '#B91C1C'
-                      };">${closeSideLabel}</small>`;
+                    : `<span style="color:${closeColor};">${formatMoney(Math.abs(r.closeNet))} <small style="color:${closeColor};">${closeSideLabel}</small></span>`;
                 return `
                 <tr>
                   <td style="font-weight:700;">
                     ${r.head.icon} ${t(r.head.bo, r.head.en)}
                     <div style="font-size:9.5px;color:#6C6C70;">[${getHeadGroupShortText(r.head.group)}]</div>
                   </td>
-                  <td style="text-align:right;color:#0369A1;font-weight:600;">${openStr}</td>
-                  <td style="text-align:right;color:#15803D;font-weight:600;">
+                  <td style="text-align:right;color:${openColor};font-weight:600;">${openStr}</td>
+                  <td style="text-align:right;color:${r.dr > 0 ? drColor : '#64748B'};font-weight:600;">
                     ${r.dr > 0 ? formatMoney(r.dr) : '—'}
                   </td>
-                  <td style="text-align:right;color:#B91C1C;font-weight:600;">
+                  <td style="text-align:right;color:${r.cr > 0 ? crColor : '#64748B'};font-weight:600;">
                     ${r.cr > 0 ? formatMoney(r.cr) : '—'}
                   </td>
-                  <td style="text-align:right;font-weight:800;">${closeStr}</td>
+                  <td style="text-align:right;color:${closeColor};font-weight:800;">${closeStr}</td>
                 </tr>
               `;
               })
@@ -3404,13 +3469,18 @@ function generateBilingualCsvContent(bookId, periodFrom, periodTo) {
 function exportBilingualCSV() {
   const csvContent = generateBilingualCsvContent(state.activeBookId, state.periodFrom, state.periodTo);
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `Tibetan_Account_Book_Report_${state.activeBookId}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast(t('བོད་ཨིན་ Excel/CSV ཕབ་ལེན་ཟིན་པ།', 'Double-Entry Excel/CSV downloaded!'));
+  const filename = `Tibetan_Account_Book_Report_${state.activeBookId}.csv`;
+  if (typeof shareOrDownloadBackup === 'function') {
+    shareOrDownloadBackup(blob, filename, t('བོད་ཀྱི་རྩིས་དེབ་ Excel/CSV', 'Tibetan Account Book CSV Report')).catch(() => {});
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(t('བོད་ཨིན་ Excel/CSV ཕབ་ལེན་ཟིན་པ།', 'Double-Entry Excel/CSV downloaded!'));
+  }
 }
 
 // ============================================================================
@@ -3437,8 +3507,9 @@ function computeCashBookPdfData() {
     String(now.getSeconds()).padStart(2, '0');
 
   // 1. All ledger opening balances under heading
+  const bookHeads = getBookAccountHeads();
   const allOpenRows = [];
-  state.accountHeads.forEach(h => {
+  bookHeads.forEach(h => {
     const r = tb.rows.find(x => x.head.id === h.id);
     const openNet = r ? r.openNet : getHeadOpeningBalance(h.id);
     if (openNet !== 0) {
@@ -3473,7 +3544,7 @@ function computeCashBookPdfData() {
   const openPartyAssets = [];
   const openOtherAssets = [];
 
-  state.accountHeads.forEach(h => {
+  bookHeads.forEach(h => {
     const r = tb.rows.find(x => x.head.id === h.id);
     const openNet = r ? r.openNet : getHeadOpeningBalance(h.id);
     if (openNet > 0) {
@@ -3580,7 +3651,7 @@ function computeCashBookPdfData() {
   const flippedLiabilityParties = [];
   let totalFlippedLiabilityAmt = 0;
 
-  state.accountHeads
+  bookHeads
     .filter(h => h.group === 'party_jv')
     .forEach(h => {
       const r = tb.rows.find(x => x.head.id === h.id);
@@ -3764,8 +3835,8 @@ function renderCashBookPdfStatementHtml() {
               <tr style="background:#E0F2FE;">
                 <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
                 <th style="text-align:left;">${t('སྡེ་ཚན།', 'Group')}</th>
-                <th style="text-align:right;">${t('གཡོན་རྩིས། (Dr)', 'Debit (Dr)')}</th>
-                <th style="text-align:right;">${t('གཡས་རྩིས། (Cr)', 'Credit (Cr)')}</th>
+                <th style="text-align:right;">${t('གཡོན།', 'Debit')}</th>
+                <th style="text-align:right;">${t('གཡས།', 'Credit')}</th>
               </tr>
             </thead>
             <tbody>
@@ -3773,18 +3844,21 @@ function renderCashBookPdfStatementHtml() {
                 data.allOpenRows.length === 0
                   ? `<tr><td colspan="4" style="text-align:center;color:#6C6C70;">${t('ཐོག་མའི་ལྷག་མ་གང་ཡང་མི་འདུག', 'No opening balances recorded.')}</td></tr>`
                   : data.allOpenRows
-                      .map(r => `
+                      .map(r => {
+                        const { drColor, crColor } = getHeadGroupDrCrColors(r.head.group);
+                        return `
                     <tr>
                       <td style="font-weight:700;">${r.head.icon} ${t(r.head.bo, r.head.en)}</td>
                       <td style="font-size:10px;color:#64748B;">${getHeadGroupLabel(r.head.group)}</td>
-                      <td style="text-align:right;color:#15803D;font-weight:700;">
+                      <td style="text-align:right;color:${r.drAmt > 0 ? drColor : '#64748B'};font-weight:700;">
                         ${r.drAmt > 0 ? formatMoney(r.drAmt) : '—'}
                       </td>
-                      <td style="text-align:right;color:#B91C1C;font-weight:700;">
+                      <td style="text-align:right;color:${r.crAmt > 0 ? crColor : '#64748B'};font-weight:700;">
                         ${r.crAmt > 0 ? formatMoney(r.crAmt) : '—'}
                       </td>
                     </tr>
-                  `)
+                  `;
+                      })
                       .join('')
               }
             </tbody>
@@ -4230,6 +4304,17 @@ function openCashBookPdfModal() {
 }
 
 function printCashBookPdfStandalone() {
+  // On Native iOS Capacitor WKWebView, window.open('', '_blank') is blocked by iOS sandbox;
+  // invoke window.print() directly so our native UIPrintInteractionController sheet opens!
+  if (
+    typeof window !== 'undefined' &&
+    ((window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iosNativePrint) ||
+      window.Capacitor)
+  ) {
+    window.print();
+    return;
+  }
+
   const statementEl = document.getElementById('printableCashBookStatement');
   if (!statementEl) {
     window.print();
@@ -4792,17 +4877,18 @@ function openEntryModal(mode) {
   const today = getTodayStr();
   modalDateValue = isDateWithinPeriod(today) ? today : state.periodTo;
 
+  const bookHeads = getBookAccountHeads();
   // Fast 1-Tap Memory: Use the user's last chosen payment method (Cash vs Bank/UPI)
-  const defaultLiquidHead = (state.lastPaymentHeadId && state.accountHeads.some(h => h.id === state.lastPaymentHeadId && h.group === 'cash_bank'))
+  const defaultLiquidHead = (state.lastPaymentHeadId && bookHeads.some(h => h.id === state.lastPaymentHeadId && h.group === 'cash_bank'))
     ? state.lastPaymentHeadId
     : 'head_cash';
 
   if (mode === 'in') {
-    const firstInc = state.accountHeads.find(h => h.group === 'income') || state.accountHeads[0];
+    const firstInc = bookHeads.find(h => h.group === 'income') || bookHeads[0];
     modalPrimaryHeadId = firstInc.id;
     modalPaymentHeadId = defaultLiquidHead;
   } else if (mode === 'out') {
-    const firstExp = state.accountHeads.find(h => h.group === 'expense') || state.accountHeads[0];
+    const firstExp = bookHeads.find(h => h.group === 'expense') || bookHeads[0];
     modalPrimaryHeadId = firstExp.id;
     modalPaymentHeadId = defaultLiquidHead;
   } else if (mode === 'contra') {
@@ -4854,11 +4940,12 @@ function renderEntryModalContent() {
     </div>
   `;
 
+  const bookHeads = getBookAccountHeads();
   if (mode === 'jv' || mode === 'contra') {
     const selectableHeads =
       mode === 'contra'
-        ? state.accountHeads.filter(h => h.group === 'cash_bank')
-        : state.accountHeads;
+        ? bookHeads.filter(h => h.group === 'cash_bank')
+        : bookHeads;
 
     sheet.innerHTML = `
       <div class="sheet-handle"></div>
@@ -5039,11 +5126,11 @@ function renderEntryModalContent() {
   // Notice: Every card in "Select Account Head" now displays its Head Group badge below!
   const gridHeads =
     mode === 'in'
-      ? state.accountHeads.filter(h => h.group === 'income' || h.group === 'party_jv' || h.group === 'fund')
-      : state.accountHeads.filter(h => h.group === 'expense' || h.group === 'party_jv' || h.group === 'fund');
+      ? bookHeads.filter(h => h.group === 'income' || h.group === 'party_jv' || h.group === 'fund')
+      : bookHeads.filter(h => h.group === 'expense' || h.group === 'party_jv' || h.group === 'fund');
 
-  const cashBankHeads = state.accountHeads.filter(h => h.group === 'cash_bank');
-  const otherHeads = state.accountHeads.filter(h => h.group !== 'cash_bank');
+  const cashBankHeads = bookHeads.filter(h => h.group === 'cash_bank');
+  const otherHeads = bookHeads.filter(h => h.group !== 'cash_bank');
 
   sheet.innerHTML = `
     <div class="sheet-handle"></div>
@@ -5781,6 +5868,44 @@ function getFullArchiveFilename() {
 }
 
 async function shareOrDownloadBackup(blob, filename, title = 'Tibetan Account Backup') {
+  // 1. Native Capacitor Filesystem + Share plugin bridge (for iOS / Android native app wrappers)
+  if (
+    typeof window !== 'undefined' &&
+    window.Capacitor &&
+    window.Capacitor.Plugins &&
+    window.Capacitor.Plugins.Filesystem &&
+    window.Capacitor.Plugins.Share
+  ) {
+    try {
+      const dataUrl = await blobToDataUrl(blob);
+      const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const writeRes = await window.Capacitor.Plugins.Filesystem.writeFile({
+        path: filename,
+        data: base64Data,
+        directory: 'CACHE'
+      });
+      if (writeRes && writeRes.uri) {
+        await window.Capacitor.Plugins.Share.share({
+          title: title,
+          url: writeRes.uri,
+          dialogTitle: title
+        });
+        showToast(
+          typeof t === 'function'
+            ? t('✅ རྩིས་དེབ་ཟུར་ཉར་བསྐུར་ཟིན།', '✅ Shared / Saved successfully!')
+            : '✅ Shared / Saved successfully!'
+        );
+        return { shared: true, downloaded: false };
+      }
+    } catch (capErr) {
+      if (capErr && (capErr.name === 'AbortError' || String(capErr.message || '').toLowerCase().includes('cancel'))) {
+        return { shared: false, downloaded: false, aborted: true };
+      }
+      console.warn('Capacitor native share fallback:', capErr);
+    }
+  }
+
+  // 2. Web Share API Level 2 (iOS Safari / Mobile Browsers)
   if (
     typeof navigator !== 'undefined' &&
     typeof navigator.share === 'function' &&
@@ -6305,7 +6430,7 @@ async function cloudPullData() {
 // ----------------------------------------------------------------------------
 function openOpeningBalanceModal() {
   const sheet = document.getElementById('modalSheet');
-  const cashBankAndParty = state.accountHeads.filter(
+  const cashBankAndParty = getBookAccountHeads().filter(
     h => h.group === 'cash_bank' || h.group === 'party_jv' || h.group === 'fund'
   );
 
@@ -6642,6 +6767,7 @@ function saveNewAccountHead() {
 
   const newHead = {
     id: 'head_' + Date.now(),
+    bookId: state.activeBookId,
     group,
     icon,
     bo: bo || en,
@@ -6657,6 +6783,462 @@ function saveNewAccountHead() {
   closeModal();
   renderAll();
   showToast(t('རྩིས་འགོ་གསར་པ་བཟོས་ཟིན།', 'New Account Head added!'));
+}
+
+// ----------------------------------------------------------------------------
+// Edit & Delete / Force-Delete Account Head (རྩིས་འགོ་བཟོ་བཅོས་དང་བསུབ་པ།)
+// ----------------------------------------------------------------------------
+function getHeadTransactionCount(headId, bookId = state.activeBookId) {
+  if (!headId || !Array.isArray(state.transactions)) return 0;
+  return state.transactions.filter(
+    tx => tx.bookId === bookId && (tx.drHeadId === headId || tx.crHeadId === headId)
+  ).length;
+}
+
+function syncHeadTransactionsVoucherTypes(headId) {
+  if (!headId || !Array.isArray(state.transactions)) return;
+  state.transactions.forEach(tx => {
+    if (tx.drHeadId !== headId && tx.crHeadId !== headId) return;
+    const drHead = getHead(tx.drHeadId);
+    const crHead = getHead(tx.crHeadId);
+    const drIsCash = drHead && drHead.group === 'cash_bank';
+    const crIsCash = crHead && crHead.group === 'cash_bank';
+    if (drIsCash && crIsCash) {
+      tx.voucherType = 'CONTRA';
+      tx.paymentHeadId = tx.crHeadId;
+      tx.primaryHeadId = tx.drHeadId;
+    } else if (drIsCash && !crIsCash) {
+      tx.voucherType = 'RECEIPT';
+      tx.paymentHeadId = tx.drHeadId;
+      tx.primaryHeadId = tx.crHeadId;
+    } else if (!drIsCash && crIsCash) {
+      tx.voucherType = 'PAYMENT';
+      tx.paymentHeadId = tx.crHeadId;
+      tx.primaryHeadId = tx.drHeadId;
+    } else {
+      tx.voucherType = 'JV';
+      tx.paymentHeadId = tx.crHeadId;
+      tx.primaryHeadId = tx.drHeadId;
+    }
+  });
+}
+
+function toggleEditOpeningSideVisibility(val) {
+  const num = Math.abs(Number(val) || 0);
+  const sideGrp = document.getElementById('editHeadOpenSideGroup');
+  if (sideGrp) {
+    sideGrp.style.display = num > 0 ? 'block' : 'none';
+  }
+}
+
+function onEditHeadGroupChange(headId, newGroup) {
+  const head = state.accountHeads.find(h => h.id === headId);
+  if (!head) return;
+  const txCount = getHeadTransactionCount(headId);
+  const isChanged = newGroup !== head.group;
+
+  // Toggle Opening Balance visibility (Income & Expense do not carry opening balances)
+  const openRow = document.getElementById('editHeadOpeningRow');
+  if (openRow) {
+    const showOpen = newGroup === 'cash_bank' || newGroup === 'party_jv' || newGroup === 'fund';
+    openRow.style.display = showOpen ? 'grid' : 'none';
+  }
+
+  // Show/hide warning banner when category changes and entries exist on this head
+  const warnBox = document.getElementById('editHeadGroupWarnBox');
+  const saveBtn = document.getElementById('btnSaveEditedHead');
+  if (warnBox) {
+    warnBox.style.display = isChanged && txCount > 0 ? 'block' : 'none';
+  }
+  if (saveBtn) {
+    if (isChanged && txCount > 0) {
+      saveBtn.style.background = '#D97706';
+      saveBtn.style.color = '#FFF';
+      saveBtn.setAttribute('onclick', `saveEditedAccountHead('${head.id}', true)`);
+      saveBtn.innerHTML = `⚠️ ${t(
+        `ཨུ་ཚུགས་ཀྱིས་སྡེ་ཚན་བརྗེ་ནས་ཉར་ཚགས། (${txCount})`,
+        `Force Change Category & Save (${txCount} entries)`
+      )}`;
+    } else {
+      saveBtn.style.background = '';
+      saveBtn.style.color = '';
+      saveBtn.setAttribute('onclick', `saveEditedAccountHead('${head.id}', false)`);
+      saveBtn.innerHTML = `✅ ${t('བཟོ་བཅོས་ཉར་ཚགས་བྱོས།', 'Save Changes')}`;
+    }
+  }
+}
+
+function openEditHeadModal(headId) {
+  const head = state.accountHeads.find(h => h.id === headId);
+  if (!head) return;
+  const sheet = document.getElementById('modalSheet');
+  if (!sheet) return;
+
+  const txCount = getHeadTransactionCount(headId);
+  const book = getActiveBook();
+  const rawOpen = Number((book.openingBalances && book.openingBalances[head.id]) || 0);
+  const openAbs = Math.abs(rawOpen);
+  const openSide = rawOpen < 0 ? 'cr' : 'dr';
+  const showOpen = head.group === 'cash_bank' || head.group === 'party_jv' || head.group === 'fund';
+
+  const iconChoices = ['🏦', '💵', '🤝', '🛍️', '🍲', '🙏', '🏢', '🪔', '🏛️', '🚗', '🏠', '📱', '💼', '🎁', '💰', '🚻', '📌'];
+  if (head.icon && !iconChoices.includes(head.icon)) {
+    iconChoices.unshift(head.icon);
+  }
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title">✏️ ${t('རྩིས་འགོ་བཟོ་བཅོས།', 'Edit Account Head')}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <!-- Current Head & Entry Count Status Banner -->
+    <div style="background:#F8FAFC;border:1.5px solid #CBD5E1;border-radius:12px;padding:9px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+      <div style="font-size:13px;font-weight:800;color:#1E293B;">
+        ${head.icon} ${escapeHtml(t(head.bo, head.en))}
+      </div>
+      <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px;background:${txCount > 0 ? '#FEF3C7' : '#E2E8F0'};color:${txCount > 0 ? '#92400E' : '#475569'};">
+        📊 ${t(`རྩིས་ཐོ་གྲངས་: ${txCount}`, `Entries: ${txCount}`)}
+      </span>
+    </div>
+
+    <!-- Category / Group Selector -->
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་འགོའི་སྡེ་ཚན། / དབྱེ་བ།', 'Account Head Category / Group')}</label>
+      <select id="editHeadGroup" class="ios-input" onchange="onEditHeadGroupChange('${head.id}', this.value)">
+        <option value="expense" ${head.group === 'expense' ? 'selected' : ''}>🔴 ${t('འགྲོ་སོང་རྩིས་འགོ།', 'Expense Head')}</option>
+        <option value="income" ${head.group === 'income' ? 'selected' : ''}>🟢 ${t('ཡོང་འབབ་རྩིས་འགོ།', 'Income Head')}</option>
+        <option value="cash_bank" ${head.group === 'cash_bank' ? 'selected' : ''}>🏦 ${t('ལག་དངུལ་དང་དངུལ་ཁང་།', 'Cash / Bank')}</option>
+        <option value="party_jv" ${head.group === 'party_jv' ? 'selected' : ''}>🤝 ${t('མི་སྣ་དང་སྔ་འདོན་རྩིས་འགོ།', 'Party / Advance')}</option>
+        <option value="fund" ${head.group === 'fund' ? 'selected' : ''}>🏛️ ${t('མ་དངུལ་རྩིས་འགོ། (མ་རྩ་དང་དམིགས་བསལ་མ་དངུལ།)', 'Fund (Capital & Designated Funds)')}</option>
+      </select>
+    </div>
+
+    <!-- Warning Box when changing Category on an Account Head that has existing entries -->
+    <div id="editHeadGroupWarnBox" style="display:none;background:#FEF2F2;border:1.5px solid #EF4444;border-radius:12px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-weight:800;color:#991B1B;font-size:12.5px;margin-bottom:3px;">
+        ⚠️ ${t(`ཉེན་བརྡ། རྩིས་འགོ་འདིའི་ནང་རྩིས་ཐོ་གྲངས་ ${txCount} འདུག`, `Warning: There are ${txCount} entries on this Account Head!`)}
+      </div>
+      <div style="font-size:11.5px;color:#7F1D1D;line-height:1.45;">
+        ${t(
+          `ཁྱེད་ཀྱིས་རྩིས་འགོའི་སྡེ་ཚན་བརྗེས་ན་རྩིས་ཐོ་གྲངས་ ${txCount} པོ་སྡེ་ཚན་གསར་པའི་ནང་རང་འགུལ་གྱིས་སྤོ་རྒྱུ་ཡིན། ཨུ་ཚུགས་ཀྱིས་སྡེ་ཚན་བརྗེ་ན་འོག་གི་མཐེབ་གཞོང་མནན་རོགས།`,
+          `Changing the category/group will reclassify all ${txCount} existing entries under the new category in Trial Balance & Balance Sheet. Tap Force Change Category below to proceed.`
+        )}
+      </div>
+    </div>
+
+    <!-- Name in Tibetan -->
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་འགོའི་མིང་ (བོད་ཡིག)', 'Account Head Name in Tibetan')}</label>
+      <input type="text" id="editHeadBo" class="ios-input" value="${escapeHtml(head.bo || '')}" />
+    </div>
+
+    <!-- Name in English -->
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('རྩིས་འགོའི་མིང་ (English)', 'Account Head Name in English')}</label>
+      <input type="text" id="editHeadEn" class="ios-input" value="${escapeHtml(head.en || '')}" />
+    </div>
+
+    <!-- Opening Balance (for Cash/Bank, Party/Advance, and Fund heads) -->
+    <div id="editHeadOpeningRow" style="display:${showOpen ? 'grid' : 'none'};grid-template-columns:1fr;gap:8px;">
+      <div class="ios-input-group">
+        <label class="ios-input-label">${t('ཐོག་མའི་ལྷག་མ།', 'Opening Balance')}</label>
+        <input
+          type="number"
+          id="editHeadOpening"
+          class="ios-input"
+          placeholder="0"
+          value="${openAbs > 0 ? openAbs : ''}"
+          oninput="toggleEditOpeningSideVisibility(this.value)"
+        />
+      </div>
+      <div class="ios-input-group" id="editHeadOpenSideGroup" style="display:${openAbs > 0 ? 'block' : 'none'};">
+        <label class="ios-input-label">${t('ལྷག་ཤོག་ཕྱོགས། (གཡོན། / གཡས།)', 'Opening Side (Dr / Cr)')}</label>
+        <select id="editHeadOpenSide" class="ios-input" style="font-size:13px;">
+          <option value="dr" ${openSide === 'dr' ? 'selected' : ''}>🟢 ${t('གཡོན། (རྒྱུ་དངོས་/བསྡུ་དགོས།)', 'Dr (Asset / Receivable)')}</option>
+          <option value="cr" ${openSide === 'cr' ? 'selected' : ''}>🟣 ${t('གཡས། (མ་དངུལ་/སྤྲོད་དགོས་བུ་ལོན།)', 'Cr (Fund / Liability / Payable)')}</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Icon Selector -->
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('མཚོན་རྟགས།', 'Icon')}</label>
+      <select id="editHeadIcon" class="ios-input">
+        ${iconChoices
+          .map(
+            ic => `<option value="${ic}" ${head.icon === ic ? 'selected' : ''}>${ic}</option>`
+          )
+          .join('')}
+      </select>
+    </div>
+
+    <!-- Save & Delete Action Buttons -->
+    <button
+      type="button"
+      id="btnSaveEditedHead"
+      class="action-btn cash-in"
+      style="width:100%;padding:13px;margin-top:6px;"
+      onclick="saveEditedAccountHead('${head.id}', false)"
+    >
+      ✅ ${t('བཟོ་བཅོས་ཉར་ཚགས་བྱོས།', 'Save Changes')}
+    </button>
+
+    <button
+      type="button"
+      class="action-btn"
+      style="width:100%;padding:11px;margin-top:8px;background:#FEF2F2;color:#DC2626;border:1.5px solid #FCA5A5;font-weight:800;"
+      onclick="confirmDeleteAccountHead('${head.id}')"
+    >
+      🗑️ ${t('རྩིས་འགོ་འདི་བསུབས།', 'Delete Account Head')} ${txCount > 0 ? `(${txCount})` : ''}
+    </button>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function saveEditedAccountHead(headId, forceCategoryChange = false) {
+  const head = state.accountHeads.find(h => h.id === headId);
+  if (!head) return { saved: false, error: 'not_found' };
+
+  const newGroup = document.getElementById('editHeadGroup')?.value || head.group;
+  const bo = document.getElementById('editHeadBo')?.value.trim() || '';
+  const en = document.getElementById('editHeadEn')?.value.trim() || '';
+  const icon = document.getElementById('editHeadIcon')?.value || head.icon || '📌';
+  const openingEl = document.getElementById('editHeadOpening');
+  const openingRaw = openingEl ? Math.abs(Number(openingEl.value) || 0) : 0;
+  const openSideEl = document.getElementById('editHeadOpenSide');
+  const openSide = openSideEl ? openSideEl.value : 'dr';
+  const openingVal = openSide === 'cr' ? -openingRaw : openingRaw;
+
+  if (!bo && !en) {
+    showToast(t('རྩིས་འགོའི་མིང་འབྲི་རོགས།', 'Please enter an Account Head name'));
+    return { saved: false, error: 'empty_name' };
+  }
+
+  const txCount = getHeadTransactionCount(headId);
+  const categoryChanged = newGroup !== head.group;
+
+  if (categoryChanged && txCount > 0 && !forceCategoryChange) {
+    onEditHeadGroupChange(headId, newGroup);
+    showToast(
+      t(
+        `⚠️ རྩིས་འགོ་འདིའི་ནང་རྩིས་ཐོ་གྲངས་ ${txCount} འདུག ཨུ་ཚུགས་ཀྱིས་སྡེ་ཚན་བརྗེ་ན་མཐེབ་གཞོང་མནན་རོགས།`,
+        `⚠️ Warning: ${txCount} entries exist on this head! Tap Force Change Category to confirm.`
+      )
+    );
+    return { saved: false, requiresForce: true, txCount };
+  }
+
+  head.bo = bo || en;
+  head.en = en || bo;
+  head.icon = icon;
+  head.group = newGroup;
+
+  const book = getActiveBook();
+  if (!book.openingBalances) book.openingBalances = {};
+  if (newGroup === 'income' || newGroup === 'expense' || openingVal === 0) {
+    delete book.openingBalances[head.id];
+  } else {
+    book.openingBalances[head.id] = openingVal;
+  }
+
+  if (categoryChanged) {
+    syncHeadTransactionsVoucherTypes(head.id);
+  }
+
+  saveState();
+  closeModal();
+  renderAll();
+  showToast(t('✅ རྩིས་འགོ་བཟོ་བཅོས་ཟིན།', '✅ Account Head updated!'));
+  return { saved: true, categoryChanged, txCount };
+}
+
+function confirmDeleteAccountHead(headId) {
+  const head = state.accountHeads.find(h => h.id === headId);
+  if (!head) return;
+  const txCount = getHeadTransactionCount(headId);
+  const sheet = document.getElementById('modalSheet');
+  if (!sheet) return;
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" style="color:#DC2626;">🗑️ ${t('རྩིས་འགོ་བསུབ་རྒྱུ་གཏན་འཁེལ་ཡིན་ནམ།', 'Confirm Delete Account Head?')}</div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div style="background:#F8FAFC;border:1.5px solid #CBD5E1;border-radius:12px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-size:14px;font-weight:800;color:#1E293B;">
+        ${head.icon} ${escapeHtml(t(head.bo, head.en))}
+      </div>
+      <div style="font-size:11px;color:#64748B;margin-top:2px;">
+        [${getHeadGroupLabel(head.group)}]
+      </div>
+    </div>
+
+    ${
+      txCount > 0
+        ? `
+      <div style="background:#FEF2F2;border:1.5px solid #EF4444;border-radius:14px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-weight:800;color:#991B1B;font-size:13.5px;margin-bottom:4px;">
+          ⚠️ ${t(`ཉེན་བརྡ། རྩིས་འགོ་འདིའི་ནང་རྩིས་ཐོ་གྲངས་ ${txCount} འདུག`, `Warning: There are ${txCount} entries on this Account Head!`)}
+        </div>
+        <div style="font-size:11.5px;color:#7F1D1D;line-height:1.5;">
+          ${t(
+            `གལ་ཏེ་ཁྱེད་ཀྱིས་ཨུ་ཚུགས་ཀྱིས་རྩིས་འགོ་འདི་བསུབས་ན། རྩིས་དེབ་འདིའི་ནང་གི་འབྲེལ་ཡོད་རྩིས་ཐོ་གྲངས་ ${txCount} པོ་དང་ཐོག་མའི་ལྷག་མ་བཅས་མཉམ་དུ་བསུབ་རྒྱུ་ཡིན།`,
+            `If you force delete this Account Head, the head along with all ${txCount} linked entries and its opening balance in this Account Book will be permanently removed.`
+          )}
+        </div>
+      </div>
+    `
+        : `
+      <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:14px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-weight:800;color:#166534;font-size:13px;margin-bottom:3px;">
+          ✅ ${t('རྩིས་འགོ་འདིའི་ནང་རྩིས་ཐོ་ (0) མི་འདུག', 'There are 0 entries on this Account Head.')}
+        </div>
+        <div style="font-size:11.5px;color:#15803D;line-height:1.45;">
+          ${t('རྩིས་འགོ་འདི་ཉེན་ཁ་མེད་པར་བསུབ་ཆོག', 'You can safely delete this Account Head from your current Account Book.')}
+        </div>
+      </div>
+    `
+    }
+
+    <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:10px;">
+      <button
+        type="button"
+        class="action-btn"
+        style="background:#E2E8F0;color:#334155;padding:12px;font-size:13.5px;font-weight:700;"
+        onclick="openEditHeadModal('${head.id}')"
+      >
+        ← ${t('ཕྱིར་ལོག', 'Back')}
+      </button>
+      <button
+        type="button"
+        class="action-btn"
+        style="background:#DC2626;color:#FFF;padding:12px;font-size:13.5px;font-weight:800;"
+        onclick="executeDeleteAccountHead('${head.id}', true)"
+      >
+        🗑️ ${
+          txCount > 0
+            ? t(`ཨུ་ཚུགས་ཀྱིས་བསུབས། (${txCount})`, `Force Delete (${txCount})`)
+            : t('གཏན་འཁེལ་བསུབས།', 'Confirm Delete')
+        }
+      </button>
+    </div>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+async function executeDeleteAccountHead(headId, force = false) {
+  const head = state.accountHeads.find(h => h.id === headId);
+  if (!head) return { deleted: false, error: 'not_found' };
+
+  const activeBookId = state.activeBookId;
+  const txCount = getHeadTransactionCount(headId, activeBookId);
+
+  if (txCount > 0 && !force) {
+    confirmDeleteAccountHead(headId);
+    return { deleted: false, requiresForce: true, txCount };
+  }
+
+  // Collect attachments from any transactions in activeBookId that will be removed
+  const txsToRemove = state.transactions.filter(
+    tx => tx.bookId === activeBookId && (tx.drHeadId === headId || tx.crHeadId === headId)
+  );
+  const attsToDelete = [];
+  txsToRemove.forEach(tx => {
+    if (Array.isArray(tx.attachments)) {
+      attsToDelete.push(...tx.attachments);
+    }
+  });
+
+  // 1. Remove transactions referencing this head in the active book
+  if (txsToRemove.length > 0) {
+    const removedIds = new Set(txsToRemove.map(tx => tx.id));
+    state.transactions = state.transactions.filter(tx => !removedIds.has(tx.id));
+    if (state.selectedReceiptTxId && removedIds.has(state.selectedReceiptTxId)) {
+      const remaining = getBookTransactions();
+      state.selectedReceiptTxId = remaining.length > 0 ? remaining[0].id : null;
+    }
+  }
+
+  // 2. Remove opening balance for this head in the active book
+  const book = getActiveBook();
+  if (book.openingBalances && book.openingBalances[headId] !== undefined) {
+    delete book.openingBalances[headId];
+  }
+
+  // 3. Unlink any khataList items in the active book pointing to this headId
+  if (Array.isArray(state.khataList)) {
+    state.khataList.forEach(item => {
+      if ((item.bookId || 'book_shop') === activeBookId && item.partyHeadId === headId) {
+        delete item.partyHeadId;
+      }
+    });
+  }
+
+  // 4. Reset Account Ledger filter if it was viewing the deleted head
+  if (state.selectedAccountLedgerHeadId === headId) {
+    state.selectedAccountLedgerHeadId = 'ALL';
+  }
+
+  // 5. Mark head deleted in activeBook, and remove from state.accountHeads if scoped to activeBook or unused in other books
+  if (!Array.isArray(book.deletedHeadIds)) {
+    book.deletedHeadIds = [];
+  }
+  if (!book.deletedHeadIds.includes(headId)) {
+    book.deletedHeadIds.push(headId);
+  }
+
+  const usedInOtherBooks =
+    state.transactions.some(
+      tx => tx.bookId !== activeBookId && (tx.drHeadId === headId || tx.crHeadId === headId)
+    ) ||
+    state.books.some(
+      b => b.id !== activeBookId && b.openingBalances && b.openingBalances[headId]
+    );
+
+  if (head.bookId === activeBookId || !usedInOtherBooks) {
+    state.accountHeads = state.accountHeads.filter(h => h.id !== headId);
+  }
+
+  saveState();
+  closeModal();
+  renderAll();
+  showToast(
+    txCount > 0
+      ? t(
+          `🗑️ རྩིས་འགོ་དང་འབྲེལ་ཡོད་རྩིས་ཐོ་ ${txCount} བསུབས་ཟིན།`,
+          `🗑️ Account Head and ${txCount} entries deleted!`
+        )
+      : t('🗑️ རྩིས་འགོ་བསུབས་ཟིན།', '🗑️ Account Head deleted!')
+  );
+
+  // 6. Clean up IndexedDB media attachments if any
+  if (attsToDelete.length > 0) {
+    const media =
+      typeof mediaService !== 'undefined'
+        ? mediaService
+        : typeof window !== 'undefined' && window.mediaService
+        ? window.mediaService
+        : null;
+    if (media && typeof media.deleteAttachment === 'function') {
+      for (const att of attsToDelete) {
+        if (att && att.id) {
+          try {
+            await media.deleteAttachment(att.id);
+          } catch (err) {
+            console.warn('Attachment cleanup error on head delete:', att.id, err);
+          }
+        }
+      }
+    }
+  }
+
+  return { deleted: true, removedTxCount: txCount };
 }
 
 // ----------------------------------------------------------------------------
@@ -6716,7 +7298,7 @@ function resolveKhataPartyHead(item) {
   if (item.partyHeadId && getHead(item.partyHeadId)) return item.partyHeadId;
   if (item.headId && getHead(item.headId)) return item.headId;
 
-  const partyHeads = state.accountHeads.filter(h => h.group === 'party_jv');
+  const partyHeads = getBookAccountHeads(item.bookId || state.activeBookId).filter(h => h.group === 'party_jv');
   const normalize = str => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const itemEnNorm = normalize(item.nameEn);
   const itemBoNorm = (item.nameBo || '').trim();
@@ -6757,6 +7339,7 @@ function resolveKhataPartyHead(item) {
 
   const newHead = {
     id: newHeadId,
+    bookId: item.bookId || state.activeBookId,
     group: 'party_jv',
     icon: item.type === 'pay' ? '🏭' : '👤',
     bo: item.nameBo || 'མི་སྣའི་རྩིས་འགོ།',
@@ -7266,9 +7849,12 @@ function confirmDeleteBook(bookId) {
   }
   state.transactions = state.transactions.filter(tx => tx.bookId !== bookId);
 
-  // 2. Remove khata entries for this book
+  // 2. Remove khata entries and book-specific custom account heads for this book
   if (Array.isArray(state.khataList)) {
     state.khataList = state.khataList.filter(k => k.bookId !== bookId);
+  }
+  if (Array.isArray(state.accountHeads)) {
+    state.accountHeads = state.accountHeads.filter(h => h.bookId !== bookId);
   }
 
   // 3. Remove book
@@ -7567,6 +8153,7 @@ function addOnboardingCustomHead(group, bo, en, icon, openingBalance) {
 
   const newHead = {
     id: newId,
+    bookId: state.activeBookId,
     group: targetGroup,
     icon: finalIcon,
     bo: finalBo,
@@ -7832,7 +8419,7 @@ function renderOnboardingWizard() {
     `;
   } else {
     const totalInitialAssets = (Number(draft.openCash) || 0) + (Number(draft.openBank) || 0);
-    const customHeadsChipsHtml = state.accountHeads
+    const customHeadsChipsHtml = getBookAccountHeads()
       .slice(-8)
       .map(
         h =>
