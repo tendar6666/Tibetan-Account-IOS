@@ -1226,10 +1226,9 @@ function getVoucherDynamicHeadLabels(tx) {
   if (vType === 'JV') {
     return {
       order: 'dr_first',
-      // In Tibetan grammar, '...ལ་' is Destination (Dr), '...ནས་' is Source (Cr)
-      drLabelBo: isDrCashBank ? 'བརྒྱུད་འབྱོར།' : 'རྩིས་འགོ་གང་ལ། (Dr)',
+      drLabelBo: isDrCashBank ? 'བརྒྱུད་འབྱོར།' : 'རྩིས་འགོ་གང་ནས། (Dr)',
       drLabelEn: isDrCashBank ? 'Received Via (Dr)' : 'Debit Head (Dr)',
-      crLabelBo: isCrCashBank ? 'བརྒྱུད་བཏང་།' : 'རྩིས་འགོ་གང་ནས། (Cr)',
+      crLabelBo: isCrCashBank ? 'བརྒྱུད་བཏང་།' : 'རྩིས་འགོ་གང་ལ། (Cr)',
       crLabelEn: isCrCashBank ? 'Paid Through (Cr)' : 'Credit Head (Cr)'
     };
   }
@@ -5259,10 +5258,10 @@ function renderEntryModalContent() {
             ⬇️ <span style="font-size:12.5px;">${t('སྤོ་ཞུ།', 'Adjust / Transfer')}</span> ⬇️
           </div>
 
-          <!-- Box 2 for JV: རྩིས་འགོ་གང་ལ་བཏང་། (Credit Head / Cr) -->
+          <!-- Box 2 for JV: རྩིས་འགོ་གང་ལ། (Credit Head / Cr) -->
           <div class="ios-input-group" style="border:2px solid #FCA5A5;background:#FFF5F5;margin-bottom:12px;">
             <label class="ios-input-label" style="color:#B91C1C;font-size:13px;">
-              2️⃣ 📤 ${t('རྩིས་འགོ་གང་ལ་བཏང་། (Cr.)', 'Credit Head (Cr)')}
+              2️⃣ 📤 ${t('རྩིས་འགོ་གང་ལ། (Cr.)', 'Credit Head (Cr)')}
             </label>
             <select id="entryPaymentHead" class="ios-input" style="font-size:14px;font-weight:700;" onchange="selectModalPaymentHead(this.value)">
               ${selectableHeads
