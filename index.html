@@ -87,6 +87,11 @@
             <option value="EUR">€ EUR</option>
             <option value="CAD">CA$ CAD</option>
           </select>
+
+          <!-- Settings & Accessibility (Text Size / Custom Currency) -->
+          <button type="button" class="settings-btn" onclick="openAppSettingsModal()" title="Settings & Text Size">
+            ⚙️
+          </button>
         </div>
       </div>
 
@@ -100,11 +105,11 @@
         <button class="new-book-btn" style="background:rgba(56,189,248,0.22);color:#7DD3FC;border-color:rgba(56,189,248,0.5);" onclick="openBackupAndCloudModal()">
           ☁️ སྤོ་བཤུགས།
         </button>
-        <button class="new-book-btn" style="background:rgba(255,255,255,0.18);color:#FFFFFF;border-color:rgba(255,255,255,0.35);" onclick="shareAppToOthers()" title="Share App with Friends & Community">
-          📤 མཉམ་སྤྱོད།
-        </button>
-        <button class="new-book-btn" style="background:rgba(255,255,255,0.22);color:#FEF08A;border-color:rgba(254,240,138,0.5);" onclick="openHelpModal()" title="Bilingual Help & FAQ (རོགས་རམ།)">
+        <button class="new-book-btn" style="background:rgba(167,243,208,0.22);color:#A7F3D0;border-color:rgba(167,243,208,0.5);" onclick="openHelpModal()" title="Bilingual FAQ & Help">
           ❓ རོགས་རམ།
+        </button>
+        <button class="new-book-btn" style="background:rgba(253,224,71,0.92);color:#4C0519;border-color:#FDE047;" onclick="openSupportCreatorModal()">
+          🙏 རྒྱབ་སྐྱོར།
         </button>
       </div>
     </div>
@@ -134,10 +139,10 @@
     <!-- Lightbox Document Preview Modal Container (Feature 15) -->
     <div id="lightboxContainer" style="display:none;"></div>
 
-    <!-- Feature 24: First-Run Interactive Onboarding Wizard Modal -->
+    <!-- First-Run Onboarding Wizard Modal Container (Feature 24) -->
     <div id="onboardingModal" class="modal-backdrop onboarding-modal-container" style="display:none;" onclick="if(event.target===this) closeOnboardingWizard()"></div>
 
-    <!-- Feature 25: Bilingual In-App FAQ & Help Modal -->
+    <!-- Bilingual FAQ & Help Modal Container (Feature 25) -->
     <div id="helpModal" class="modal-backdrop help-modal-container" style="display:none;" onclick="if(event.target===this) closeHelpModal()"></div>
   </main>
 

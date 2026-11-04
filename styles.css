@@ -268,6 +268,28 @@ body.fullscreen-mode .ios-home-indicator {
   background: #FFFFFF;
 }
 
+.settings-btn {
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+  font-size: 16px;
+  cursor: pointer;
+  outline: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  transition: background 0.15s ease;
+}
+
+.settings-btn:active {
+  background: rgba(255, 255, 255, 0.32);
+}
+
 /* Account Book Selector Bar */
 .book-selector-bar {
   display: flex;
@@ -2785,5 +2807,53 @@ body.fullscreen-mode .ios-home-indicator {
   line-height: 1.68;
   color: #475569;
 }
+
+/* ==========================================================================
+   Accessibility: Dynamic Text Size & Font Scaling (Normal / Large / Jumbo)
+   ========================================================================== */
+html[data-text-size="large"],
+body[data-text-size="large"] {
+  font-size: 15.5px;
+}
+
+html[data-text-size="xlarge"],
+body[data-text-size="xlarge"] {
+  font-size: 17.5px;
+}
+
+[data-text-size="large"] .app-title-main { font-size: 19px !important; }
+[data-text-size="large"] .app-title-sub { font-size: 12.5px !important; }
+[data-text-size="large"] .balance-amount { font-size: 27px !important; }
+[data-text-size="large"] .transaction-item,
+[data-text-size="large"] .tx-card,
+[data-text-size="large"] .report-card,
+[data-text-size="large"] .summary-card,
+[data-text-size="large"] .fin-table,
+[data-text-size="large"] .modal-sheet,
+[data-text-size="large"] .ios-input,
+[data-text-size="large"] .ios-input-label,
+[data-text-size="large"] .cat-chip,
+[data-text-size="large"] .action-btn,
+[data-text-size="large"] .tab-label {
+  font-size: 1.12em !important;
+}
+
+[data-text-size="xlarge"] .app-title-main { font-size: 21px !important; }
+[data-text-size="xlarge"] .app-title-sub { font-size: 14px !important; }
+[data-text-size="xlarge"] .balance-amount { font-size: 30px !important; }
+[data-text-size="xlarge"] .transaction-item,
+[data-text-size="xlarge"] .tx-card,
+[data-text-size="xlarge"] .report-card,
+[data-text-size="xlarge"] .summary-card,
+[data-text-size="xlarge"] .fin-table,
+[data-text-size="xlarge"] .modal-sheet,
+[data-text-size="xlarge"] .ios-input,
+[data-text-size="xlarge"] .ios-input-label,
+[data-text-size="xlarge"] .cat-chip,
+[data-text-size="xlarge"] .action-btn,
+[data-text-size="xlarge"] .tab-label {
+  font-size: 1.25em !important;
+}
+
 
 

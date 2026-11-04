@@ -194,11 +194,24 @@ const CURRENCIES = {
   CAD: { symbol: 'CA$', label: 'CA$ CAD (ཁེ་ན་ཌ་)' }
 };
 
+function getAllCurrencies() {
+  const custom =
+    typeof state !== 'undefined' &&
+    state &&
+    state.customCurrencies &&
+    typeof state.customCurrencies === 'object'
+      ? state.customCurrencies
+      : {};
+  return { ...CURRENCIES, ...custom };
+}
+
 const DEFAULT_STATE = {
   hasCompletedOnboarding: false,
   onboardingStep: 1,
   lang: 'bo_en', // 'bo_en' | 'bo' | 'en'
   currency: 'INR',
+  customCurrencies: {},
+  textSize: 'normal', // 'normal' | 'large' | 'xlarge'
   // Accounting Skill Level: 'basic' (Clean Cash In/Out for shopkeepers/elders) | 'advance' (Full Contra, JV, Trial Balance & BS)
   accountingMode: 'basic',
   activeTab: 'ledger', // 'ledger' | 'heads' | 'account_ledger' | 'reports'
@@ -488,6 +501,16 @@ function sanitizeRemovedUpiHead(s) {
     if (pema && !pema.bookId) pema.bookId = 'book_shop';
     const ludhiana = s.accountHeads.find(h => h.id === 'party_ludhiana');
     if (ludhiana && !ludhiana.bookId) ludhiana.bookId = 'book_shop';
+
+    // Auto-heal: Ensure all default template heads exist in s.accountHeads
+    DEFAULT_ACCOUNT_HEADS.forEach(defHead => {
+      if (!defHead.bookId) {
+        const exists = s.accountHeads.some(h => h.id === defHead.id);
+        if (!exists) {
+          s.accountHeads.push({ ...defHead });
+        }
+      }
+    });
   }
   // Remap any legacy transactions that used head_upi or head_cheque to head_sbi (Bank)
   if (Array.isArray(s.transactions)) {
@@ -501,6 +524,9 @@ function sanitizeRemovedUpiHead(s) {
   // Remap any legacy opening balances that used head_upi or head_cheque to head_sbi
   if (Array.isArray(s.books)) {
     s.books.forEach(b => {
+      if (b && !Array.isArray(b.deletedHeadIds)) {
+        b.deletedHeadIds = [];
+      }
       if (b && b.openingBalances) {
         if (b.openingBalances.head_upi !== undefined) {
           b.openingBalances.head_sbi = (Number(b.openingBalances.head_sbi) || 0) + (Number(b.openingBalances.head_upi) || 0);
@@ -569,7 +595,10 @@ function sanitizeAndValidateState(incoming) {
 
   if (!['bo_en', 'bo', 'en'].includes(merged.lang)) merged.lang = 'bo_en';
   if (!['basic', 'advance'].includes(merged.accountingMode)) merged.accountingMode = 'basic';
-  if (!CURRENCIES[merged.currency]) merged.currency = 'INR';
+  const allCurrencies = { ...CURRENCIES, ...(merged.customCurrencies || {}) };
+  if (!allCurrencies[merged.currency]) merged.currency = 'INR';
+  if (!['normal', 'large', 'xlarge'].includes(merged.textSize)) merged.textSize = 'normal';
+  if (!merged.customCurrencies || typeof merged.customCurrencies !== 'object') merged.customCurrencies = {};
 
   if (!merged.periodFrom || typeof merged.periodFrom !== 'string') merged.periodFrom = DEFAULT_STATE.periodFrom;
   if (!merged.periodTo || typeof merged.periodTo !== 'string') merged.periodTo = DEFAULT_STATE.periodTo;
@@ -599,7 +628,7 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return sanitizeRemovedUpiHead({
+      const loaded = sanitizeRemovedUpiHead({
         ...DEFAULT_STATE,
         ...parsed,
         hasCompletedOnboarding:
@@ -608,12 +637,19 @@ function loadState() {
             : Boolean(parsed.hasCompletedOnboarding),
         lang: savedConfig.lang || parsed.lang || DEFAULT_STATE.lang,
         currency: savedConfig.currency || parsed.currency || DEFAULT_STATE.currency,
+        customCurrencies:
+          parsed.customCurrencies && typeof parsed.customCurrencies === 'object'
+            ? parsed.customCurrencies
+            : {},
+        textSize: savedConfig.textSize || parsed.textSize || DEFAULT_STATE.textSize || 'normal',
         accountingMode: savedConfig.accountingMode || parsed.accountingMode || DEFAULT_STATE.accountingMode,
         periodFrom: savedConfig.periodFrom || parsed.periodFrom || DEFAULT_STATE.periodFrom,
         periodTo: savedConfig.periodTo || parsed.periodTo || DEFAULT_STATE.periodTo,
         accountHeads:
           parsed.accountHeads && parsed.accountHeads.length ? parsed.accountHeads : DEFAULT_ACCOUNT_HEADS
       });
+      applyTextSize(loaded.textSize);
+      return loaded;
     }
 
     // Migrate user's Language & Period configuration from v6 if present
@@ -626,10 +662,12 @@ function loadState() {
       }
       base.lang = savedConfig.lang || parsedV6.lang || base.lang;
       base.currency = savedConfig.currency || parsedV6.currency || base.currency;
+      base.textSize = savedConfig.textSize || base.textSize || 'normal';
       base.periodFrom = savedConfig.periodFrom || parsedV6.periodFrom || base.periodFrom;
       base.periodTo = savedConfig.periodTo || parsedV6.periodTo || base.periodTo;
       base.cloudSyncUrl = parsedV6.cloudSyncUrl || '';
       base.cloudSyncKey = parsedV6.cloudSyncKey || '';
+      applyTextSize(base.textSize);
       return sanitizeRemovedUpiHead(base);
     }
   } catch (e) {
@@ -642,22 +680,25 @@ function loadState() {
   }
   if (savedConfig.lang) fresh.lang = savedConfig.lang;
   if (savedConfig.currency) fresh.currency = savedConfig.currency;
+  if (savedConfig.textSize) fresh.textSize = savedConfig.textSize;
   if (savedConfig.accountingMode) fresh.accountingMode = savedConfig.accountingMode;
   if (savedConfig.periodFrom) fresh.periodFrom = savedConfig.periodFrom;
   if (savedConfig.periodTo) fresh.periodTo = savedConfig.periodTo;
+  applyTextSize(fresh.textSize);
   return sanitizeRemovedUpiHead(fresh);
 }
 
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    // Also persist Language, Currency, Onboarding & Accounting Period in dedicated config storage
+    // Also persist Language, Currency, Text Size, Onboarding & Accounting Period in dedicated config storage
     localStorage.setItem(
       CONFIG_STORAGE_KEY,
       JSON.stringify({
         hasCompletedOnboarding: Boolean(state.hasCompletedOnboarding),
         lang: state.lang,
         currency: state.currency,
+        textSize: state.textSize || 'normal',
         accountingMode: state.accountingMode,
         periodFrom: state.periodFrom,
         periodTo: state.periodTo,
@@ -668,6 +709,33 @@ function saveState() {
     );
   } catch (e) {
     console.warn('Could not save state:', e);
+  }
+}
+
+// Accessibility: Text Size & Font Scaling Helper
+function setTextSize(size) {
+  if (!['normal', 'large', 'xlarge'].includes(size)) size = 'normal';
+  state.textSize = size;
+  applyTextSize(size);
+  saveState();
+  showToast(
+    size === 'large'
+      ? t('🔤 ཡི་གེ་ཆེ་རུ་བཏང་ཟིན། (Large)', 'Text size set to Large')
+      : size === 'xlarge'
+      ? t('🔤 ཡི་གེ་ཆེས་ཆེ་བར་བཏང་ཟིན། (Extra Large)', 'Text size set to Extra Large')
+      : t('🔤 ཡི་གེ་སྤྱིར་བཏང་དུ་བཞག་ཟིན། (Normal)', 'Text size set to Normal')
+  );
+  renderAll();
+}
+
+function applyTextSize(size = (typeof state !== 'undefined' && state && state.textSize) || 'normal') {
+  if (typeof document !== 'undefined') {
+    if (document.documentElement) {
+      document.documentElement.setAttribute('data-text-size', size);
+    }
+    if (document.body) {
+      document.body.setAttribute('data-text-size', size);
+    }
   }
 }
 
@@ -682,6 +750,10 @@ function getCurrencyLocale(curr) {
   if (curr === 'USD') return 'en-US';
   if (curr === 'CAD') return 'en-CA';
   if (curr === 'EUR') return 'de-DE';
+  if (curr === 'RMB' || curr === 'CNY') return 'zh-CN';
+  if (curr === 'CHF') return 'de-CH';
+  if (curr === 'GBP') return 'en-GB';
+  if (curr === 'AUD') return 'en-AU';
   return 'en-IN'; // INR & NPR (Lakhs/Crores grouping)
 }
 
@@ -689,10 +761,13 @@ function roundMoney(val) {
   return Math.round((Number(val) || 0) * 100) / 100;
 }
 
-function formatMoney(num) {
-  const sym = (CURRENCIES[state.currency] || CURRENCIES.INR).symbol;
+function formatMoney(num, overrideCurr) {
+  const allCurrs = getAllCurrencies();
+  const targetCurr = overrideCurr || state.currency;
+  const currObj = allCurrs[targetCurr] || allCurrs.INR || { symbol: targetCurr || '₹' };
+  const sym = currObj.symbol;
   const rounded = roundMoney(num);
-  const locale = getCurrencyLocale(state.currency);
+  const locale = getCurrencyLocale(targetCurr);
   const formatted = Math.abs(rounded).toLocaleString(locale, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2
@@ -1084,6 +1159,116 @@ function computeTrialBalanceAndBS() {
 }
 
 // ============================================================================
+// Feature 28: འབབ་གྲོན་རྩིས་ཤོག (Income & Expenditure Statement Engine)
+// ============================================================================
+function computeIncomeStatement(periodFrom = state.periodFrom, periodTo = state.periodTo) {
+  const txs = getBookTransactions();
+  const book = getActiveBook();
+  const incomeMap = {};
+  const expenseMap = {};
+
+  getBookAccountHeads().forEach(h => {
+    if (h.group === 'income') {
+      incomeMap[h.id] = { head: h, cr: 0, dr: 0, net: 0 };
+    } else if (h.group === 'expense') {
+      expenseMap[h.id] = { head: h, dr: 0, cr: 0, net: 0 };
+    }
+  });
+
+  txs
+    .filter(tx => tx.date >= periodFrom && tx.date <= periodTo)
+    .forEach(tx => {
+      const amt = Number(tx.amount) || 0;
+      const drHead = getHead(tx.drHeadId);
+      const crHead = getHead(tx.crHeadId);
+
+      // Debit leg
+      if (drHead && drHead.group === 'expense') {
+        if (!expenseMap[drHead.id]) expenseMap[drHead.id] = { head: drHead, dr: 0, cr: 0, net: 0 };
+        expenseMap[drHead.id].dr += amt;
+      } else if (drHead && drHead.group === 'income') {
+        if (!incomeMap[drHead.id]) incomeMap[drHead.id] = { head: drHead, cr: 0, dr: 0, net: 0 };
+        incomeMap[drHead.id].dr += amt; // Income adjustment / refund
+      }
+
+      // Credit leg
+      if (crHead && crHead.group === 'income') {
+        if (!incomeMap[crHead.id]) incomeMap[crHead.id] = { head: crHead, cr: 0, dr: 0, net: 0 };
+        incomeMap[crHead.id].cr += amt;
+      } else if (crHead && crHead.group === 'expense') {
+        if (!expenseMap[crHead.id]) expenseMap[crHead.id] = { head: crHead, dr: 0, cr: 0, net: 0 };
+        expenseMap[crHead.id].cr += amt; // Expense return / reversal
+      }
+    });
+
+  const incomeRows = [];
+  let totalIncome = 0;
+  Object.values(incomeMap).forEach(r => {
+    const net = r.cr - r.dr;
+    r.net = net;
+    if (net !== 0 || r.cr > 0 || r.dr > 0) {
+      incomeRows.push(r);
+    }
+    totalIncome += net;
+  });
+
+  const expenseRows = [];
+  let totalExpense = 0;
+  Object.values(expenseMap).forEach(r => {
+    const net = r.dr - r.cr;
+    r.net = net;
+    if (net !== 0 || r.dr > 0 || r.cr > 0) {
+      expenseRows.push(r);
+    }
+    totalExpense += net;
+  });
+
+  // Sort descending by net amount
+  incomeRows.sort((a, b) => b.net - a.net);
+  expenseRows.sort((a, b) => b.net - a.net);
+
+  const netResult = totalIncome - totalExpense;
+  const isSurplus = netResult > 0;
+  const isDeficit = netResult < 0;
+  const isBreakEven = netResult === 0;
+
+  return {
+    book,
+    periodFrom,
+    periodTo,
+    incomeRows,
+    expenseRows,
+    totalIncome,
+    totalExpense,
+    netResult,
+    netResultAbs: Math.abs(netResult),
+    isSurplus,
+    isDeficit,
+    isBreakEven,
+    resultLabelBo: isSurplus
+      ? '🏆 ཡོང་འཕར། (Net Surplus / Profit)'
+      : isDeficit
+      ? '⚠️ སོང་འཕར། (Net Deficit / Loss)'
+      : '⚖️ འབབ་གྲོན་ཁ་འགྲིག (Break-Even)',
+    resultLabelEn: isSurplus
+      ? '🏆 Net Surplus / Profit'
+      : isDeficit
+      ? '⚠️ Net Deficit / Loss'
+      : '⚖️ Break-Even',
+    surplusDeficitNoteBo: isSurplus
+      ? 'ཡོང་འབབ་ཀྱིས་གྲོན་སོང་ལས་བརྒལ་བའི་ཡོང་འཕར་ (Net Surplus) འདི་མ་རྩའི་མ་དངུལ་ (Capital Fund) ཁོངས་སུ་བསྣན་ཡོད།'
+      : isDeficit
+      ? 'གྲོན་སོང་གིས་ཡོང་འབབ་ལས་བརྒལ་བའི་སོང་འཕར་ (Net Deficit) འདི་མ་རྩའི་མ་དངུལ་ (Capital Fund) ཁོངས་ནས་ཕྲིས་ཡོད།'
+      : 'རྩིས་དུས་འདིའི་ཡོང་འབབ་དང་གྲོན་སོང་ཆ་མཉམ་པ།',
+    surplusDeficitNoteEn: isSurplus
+      ? 'Income exceeded expenses: Net surplus / profit credited to General Capital Fund.'
+      : isDeficit
+      ? 'Expenses exceeded income: Net deficit / loss deducted from General Capital Fund.'
+      : 'Operating income and expenditures are exactly balanced.'
+  };
+}
+
+// ============================================================================
 // Automatic Voucher & From/To (རྩིས་འགོ་གང་ནས། -> རྩིས་འགོ་ལ་བཏང་།) Resolver
 // ============================================================================
 function resolveDoubleEntry(mode, primaryHeadId, paymentHeadId) {
@@ -1281,7 +1466,20 @@ function renderHeader() {
   const bookSelect = document.getElementById('bookSelect');
 
   if (langSelect) langSelect.value = state.lang;
-  if (currSelect) currSelect.value = state.currency;
+
+  if (currSelect) {
+    const allCurrs = getAllCurrencies();
+    let optionsHtml = Object.keys(allCurrs)
+      .map(code => {
+        const c = allCurrs[code];
+        const sel = state.currency === code ? 'selected' : '';
+        return `<option value="${escapeHtml(code)}" ${sel}>${escapeHtml(c.label || code)}</option>`;
+      })
+      .join('');
+    optionsHtml += `<option value="__ADD_CURRENCY__">➕ ${t('དངུལ་ལོར་གསར་སྣོན།...', 'Add Currency...')}</option>`;
+    currSelect.innerHTML = optionsHtml;
+    currSelect.value = state.currency;
+  }
 
   if (bookSelect) {
     const bookOptions = state.books
@@ -2916,6 +3114,8 @@ function shareReceiptWhatsApp(txId) {
 function renderReportsTab() {
   const metrics = computeBookMetrics();
   const tb = computeTrialBalanceAndBS();
+  const incStmt = computeIncomeStatement();
+  const book = getActiveBook();
   const isAdvance = state.accountingMode === 'advance';
 
   return `
@@ -3025,6 +3225,150 @@ function renderReportsTab() {
             ${formatMoney(metrics.totalPartyPayable)} <small style="font-size:10px;">${state.lang === 'en' ? 'Cr' : 'གཡས།'}</small>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 2. འབབ་གྲོན་རྩིས་ཤོག (INCOME & EXPENDITURE STATEMENT) -->
+    <div class="report-card" style="border:2px solid #0284C7;background:#FFFFFF;padding:14px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
+        <div>
+          <div style="font-size:16px;font-weight:900;color:#0C4A6E;display:flex;align-items:center;gap:6px;">
+            <span>📊 ${t('འབབ་གྲོན་རྩིས་ཤོག', 'Income & Expenditure Statement')}</span>
+            <span class="badge" style="background:#E0F2FE;color:#0369A1;font-size:10.5px;padding:2px 8px;font-weight:800;">
+              ${state.lang === 'en' ? 'Income Statement' : 'འབབ་གྲོན་རྩིས་ཤོག'}
+            </span>
+          </div>
+          <div style="font-size:11px;color:#64748B;font-weight:600;margin-top:2px;">
+            📅 ${t('རྩིས་དུས།', 'Period')}: ${escapeHtml(state.periodFrom)} → ${escapeHtml(state.periodTo)}
+          </div>
+        </div>
+        <div class="no-print" style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="action-btn" style="background:#0F172A;color:#FDE047;font-size:11.5px;padding:6px 11px;" onclick="exportIncomeStatementCSV()">
+            📥 ${t('CSV ཕྱིར་འདྲེན།', 'Export CSV')}
+          </button>
+          <button class="action-btn" style="background:#0284C7;color:#FFFFFF;font-size:11.5px;padding:6px 11px;" onclick="printOrExportIncomeStatement()">
+            🖨️ ${t('འབབ་གྲོན་རྩིས་ཤོག་པར་འདེབས།', 'Print / Save Statement')}
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Summary Row: Total Income, Total Expenditure, Net Surplus/Deficit -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;margin-bottom:12px;">
+        <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:10px;padding:10px 12px;">
+          <div style="font-size:11px;color:#166534;font-weight:800;">
+            📥 ${t('༡། ཁྱོན་བསྡོམས་ཡོང་འབབ།', '1. Total Income (Revenue)')}
+          </div>
+          <div style="font-size:16px;font-weight:900;color:#15803D;margin-top:4px;">
+            ${formatMoney(incStmt.totalIncome)}
+          </div>
+          <div style="font-size:10px;color:#4B5563;margin-top:2px;">
+            ${t(`${incStmt.incomeRows.length} རྩིས་འགོ།`, `${incStmt.incomeRows.length} Head(s)`)}
+          </div>
+        </div>
+
+        <div style="background:#FFF1F2;border:1.5px solid #FDA4AF;border-radius:10px;padding:10px 12px;">
+          <div style="font-size:11px;color:#9F1239;font-weight:800;">
+            📤 ${t('༢། ཁྱོན་བསྡོམས་གྲོན་སོང་།', '2. Total Expenditure')}
+          </div>
+          <div style="font-size:16px;font-weight:900;color:#BE123C;margin-top:4px;">
+            ${formatMoney(incStmt.totalExpense)}
+          </div>
+          <div style="font-size:10px;color:#4B5563;margin-top:2px;">
+            ${t(`${incStmt.expenseRows.length} རྩིས་འགོ།`, `${incStmt.expenseRows.length} Head(s)`)}
+          </div>
+        </div>
+
+        <div style="background:${incStmt.isSurplus ? '#FEFCE8' : incStmt.isDeficit ? '#FEF2F2' : '#F1F5F9'};border:1.5px solid ${incStmt.isSurplus ? '#FACC15' : incStmt.isDeficit ? '#F87171' : '#94A3B8'};border-radius:10px;padding:10px 12px;">
+          <div style="font-size:11px;color:${incStmt.isSurplus ? '#854D0E' : incStmt.isDeficit ? '#991B1B' : '#334155'};font-weight:800;">
+            ${t(incStmt.resultLabelBo, incStmt.resultLabelEn)}
+          </div>
+          <div style="font-size:16px;font-weight:900;color:${incStmt.isSurplus ? '#15803D' : incStmt.isDeficit ? '#B91C1C' : '#0F172A'};margin-top:4px;">
+            ${incStmt.isSurplus ? '+' : incStmt.isDeficit ? '-' : ''} ${formatMoney(incStmt.netResultAbs)}
+          </div>
+          <div style="font-size:10px;color:#64748B;margin-top:2px;">
+            ${t(incStmt.surplusDeficitNoteBo, incStmt.surplusDeficitNoteEn)}
+          </div>
+        </div>
+      </div>
+
+      <!-- Section A: ༡། ཡོང་འབབ་ཁག (Income / Revenue Breakdown) -->
+      <div style="margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:800;color:#166534;margin-bottom:6px;display:flex;justify-content:space-between;border-bottom:1.5px solid #86EFAC;padding-bottom:4px;">
+          <span>📥 ${t('༡། ཡོང་འབབ་ཁག', '1. Income & Revenue Breakdown')}</span>
+          <span>${formatMoney(incStmt.totalIncome)}</span>
+        </div>
+        ${
+          incStmt.incomeRows.length === 0
+            ? `<div style="font-size:11.5px;color:#94A3B8;padding:8px 0;text-align:center;">${t('རྩིས་དུས་འདིའི་ནང་ཡོང་འབབ་ཐོ་མི་འདུག', 'No income recorded in this period.')}</div>`
+            : `
+          <div style="overflow-x:auto;">
+            <table class="fin-table" style="font-size:12px;margin-bottom:4px;">
+              <thead>
+                <tr>
+                  <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
+                  <th style="text-align:right;">${t('བྱུང་བསྡོམས། (Cr)', 'Gross Cr')}</th>
+                  <th style="text-align:right;">${t('སྤོ་ཆག (Dr)', 'Adj Dr')}</th>
+                  <th style="text-align:right;">${t('གཙང་འབབ།', 'Net Income')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${incStmt.incomeRows
+                  .map(
+                    r => `
+                  <tr>
+                    <td style="font-weight:700;">${r.head.icon} ${t(r.head.bo, r.head.en)}</td>
+                    <td style="text-align:right;color:#15803D;font-weight:600;">${formatMoney(r.cr)}</td>
+                    <td style="text-align:right;color:#64748B;">${r.dr > 0 ? formatMoney(r.dr) : '—'}</td>
+                    <td style="text-align:right;color:#15803D;font-weight:800;">${formatMoney(r.net)}</td>
+                  </tr>
+                `
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+        `
+        }
+      </div>
+
+      <!-- Section B: ༢། གྲོན་སོང་ཁག (Expenditure Breakdown) -->
+      <div style="margin-bottom:6px;">
+        <div style="font-size:13px;font-weight:800;color:#9F1239;margin-bottom:6px;display:flex;justify-content:space-between;border-bottom:1.5px solid #FDA4AF;padding-bottom:4px;">
+          <span>📤 ${t('༢། གྲོན་སོང་ཁག', '2. Expenditure Breakdown')}</span>
+          <span>${formatMoney(incStmt.totalExpense)}</span>
+        </div>
+        ${
+          incStmt.expenseRows.length === 0
+            ? `<div style="font-size:11.5px;color:#94A3B8;padding:8px 0;text-align:center;">${t('རྩིས་དུས་འདིའི་ནང་གྲོན་སོང་ཐོ་མི་འདུག', 'No expenditures recorded in this period.')}</div>`
+            : `
+          <div style="overflow-x:auto;">
+            <table class="fin-table" style="font-size:12px;margin-bottom:4px;">
+              <thead>
+                <tr>
+                  <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
+                  <th style="text-align:right;">${t('སོང་བསྡོམས། (Dr)', 'Gross Dr')}</th>
+                  <th style="text-align:right;">${t('སྤོ་ཆག (Cr)', 'Adj Cr')}</th>
+                  <th style="text-align:right;">${t('གཙང་གྲོན།', 'Net Expense')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${incStmt.expenseRows
+                  .map(
+                    r => `
+                  <tr>
+                    <td style="font-weight:700;">${r.head.icon} ${t(r.head.bo, r.head.en)}</td>
+                    <td style="text-align:right;color:#BE123C;font-weight:600;">${formatMoney(r.dr)}</td>
+                    <td style="text-align:right;color:#64748B;">${r.cr > 0 ? formatMoney(r.cr) : '—'}</td>
+                    <td style="text-align:right;color:#BE123C;font-weight:800;">${formatMoney(r.net)}</td>
+                  </tr>
+                `
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+        `
+        }
       </div>
     </div>
 
@@ -3198,7 +3542,7 @@ function renderReportsTab() {
         </div>
 
         <div class="bs-row">
-          <span>${t('དུས་ཡུན་ནང་གི་ཁེ་བཟང་ངམ་ལྷག་མ།', 'Add: Net Surplus (Income - Expense)')}</span>
+          <span>${tb.netSurplus >= 0 ? t('➕ ཡོང་འཕར། (Net Surplus / Profit)', '➕ Net Surplus / Profit') : t('➖ སོང་འཕར། (Net Deficit / Loss)', '➖ Net Deficit / Loss')}</span>
           <strong style="color:${tb.netSurplus >= 0 ? '#15803D' : '#B91C1C'};">
             ${tb.netSurplus >= 0 ? '+' : ''}${formatMoney(tb.netSurplus)}
           </strong>
@@ -3402,6 +3746,14 @@ function updateAccountingPeriod(fromDate, toDate) {
   );
 }
 
+// RFC 4180 cell escaping with CSV formula injection mitigation (CWE-1236)
+function csvEscape(val) {
+  if (val === null || val === undefined) return '""';
+  let s = String(val);
+  if (/^[=@+\-]/.test(s) || /^[\s\u00A0\uFEFF]*[=@+\-\uFF1D]/.test(s) || /^[=@+\-\t\r\uFF1D]/.test(s.trimStart())) s = "'" + s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
 function generateBilingualCsvContent(bookId, periodFrom, periodTo) {
   const activeBook = bookId ? state.books.find(b => b.id === bookId) : getActiveBook();
   const bId = activeBook ? activeBook.id : state.activeBookId;
@@ -3412,14 +3764,6 @@ function generateBilingualCsvContent(bookId, periodFrom, periodTo) {
   const txs = state.transactions
     .filter(tx => tx.bookId === bId && (!pFrom || tx.date >= pFrom) && (!pTo || tx.date <= pTo))
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-
-  // RFC 4180 cell escaping with CSV formula injection mitigation (CWE-1236)
-  function csvEscape(val) {
-    if (val === null || val === undefined) return '""';
-    let s = String(val);
-    if (/^[=@+\-]/.test(s) || /^[\s\u00A0\uFEFF]*[=@+\-\uFF1D]/.test(s) || /^[=@+\-\t\r\uFF1D]/.test(s.trimStart())) s = "'" + s;
-    return `"${s.replace(/"/g, '""')}"`;
-  }
 
   // 2. CSV Header with Party Name (Tibetan & English)
   const rows = [
@@ -4665,6 +5009,379 @@ function printOrExportTrialBalance() {
   }
   printWin.document.write(htmlContent);
   printWin.document.close();
+}
+
+function getPrintableIncomeStatementHtml() {
+  const inc = computeIncomeStatement();
+  const book = inc.book;
+  const langAttr = state.lang === 'en' ? 'en' : 'bo';
+  const docTitle =
+    state.lang === 'en'
+      ? 'Statement of Income & Expenditure - Tibetan Account Book'
+      : 'འབབ་གྲོན་རྩིས་ཤོག • བོད་ཀྱི་རྩིས་དེབ།';
+
+  const now = new Date();
+  const exportDateStr =
+    now.getFullYear() +
+    '-' +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(now.getDate()).padStart(2, '0');
+
+  const incomeRowsHtml =
+    inc.incomeRows.length === 0
+      ? `<tr><td colspan="4" style="text-align:center;color:#64748B;padding:10px;">${t('རྩིས་དུས་འདིའི་ནང་ཡོང་འབབ་ཐོ་མི་འདུག', 'No income recorded in this period.')}</td></tr>`
+      : inc.incomeRows
+          .map(
+            r => `
+        <tr>
+          <td style="font-weight:700;">${r.head.icon} ${t(r.head.bo, r.head.en)}</td>
+          <td style="text-align:right;color:#15803D;font-weight:600;">${formatMoney(r.cr)}</td>
+          <td style="text-align:right;color:#64748B;">${r.dr > 0 ? formatMoney(r.dr) : '—'}</td>
+          <td style="text-align:right;color:#15803D;font-weight:800;">${formatMoney(r.net)}</td>
+        </tr>
+      `
+          )
+          .join('');
+
+  const expenseRowsHtml =
+    inc.expenseRows.length === 0
+      ? `<tr><td colspan="4" style="text-align:center;color:#64748B;padding:10px;">${t('རྩིས་དུས་འདིའི་ནང་གྲོན་སོང་ཐོ་མི་འདུག', 'No expenditures recorded in this period.')}</td></tr>`
+      : inc.expenseRows
+          .map(
+            r => `
+        <tr>
+          <td style="font-weight:700;">${r.head.icon} ${t(r.head.bo, r.head.en)}</td>
+          <td style="text-align:right;color:#BE123C;font-weight:600;">${formatMoney(r.dr)}</td>
+          <td style="text-align:right;color:#64748B;">${r.cr > 0 ? formatMoney(r.cr) : '—'}</td>
+          <td style="text-align:right;color:#BE123C;font-weight:800;">${formatMoney(r.net)}</td>
+        </tr>
+      `
+          )
+          .join('');
+
+  const resultColor = inc.isSurplus ? '#15803D' : inc.isDeficit ? '#B91C1C' : '#0F172A';
+  const resultBg = inc.isSurplus ? '#FEFCE8' : inc.isDeficit ? '#FEF2F2' : '#F1F5F9';
+  const resultBorder = inc.isSurplus ? '#FACC15' : inc.isDeficit ? '#F87171' : '#CBD5E1';
+  const resultIcon = inc.isSurplus ? '🏆' : inc.isDeficit ? '⚠️' : '⚖️';
+
+  return `<!DOCTYPE html>
+<html lang="${langAttr}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${docTitle}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Tibetan:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    @page { size: A4 portrait; margin: 12mm 10mm 14mm 10mm; }
+    html, body {
+      background: #FFFFFF !important;
+      padding: 16px;
+      margin: 0;
+      font-family: 'Noto Sans Tibetan', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #0F172A;
+      font-size: 13px;
+      line-height: 1.68;
+    }
+    .no-print { display: none !important; }
+    .inc-print-sheet {
+      border: 1.5px solid #CBD5E1;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .statement-header-box {
+      text-align: center;
+      border-bottom: 2px solid #0F172A;
+      padding-top: 10px;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .statement-yiggo {
+      font-size: 21px;
+      color: #881337;
+      font-weight: 800;
+      line-height: 2.1;
+      display: block;
+    }
+    .statement-eng-title {
+      font-size: 13px;
+      letter-spacing: 1.2px;
+      font-weight: 800;
+      color: #1E3A8A;
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+    .statement-meta-row {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: #475569;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+    .inc-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      margin-bottom: 6px;
+    }
+    .inc-table th, .inc-table td {
+      border: 1px solid #CBD5E1;
+      padding: 7px 10px;
+    }
+    .inc-table th {
+      background: #F8FAFC;
+      font-weight: 800;
+      color: #1E293B;
+    }
+    .sec-banner {
+      font-size: 13.5px;
+      font-weight: 800;
+      padding: 7px 12px;
+      border-radius: 6px;
+      margin: 14px 0 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .result-box {
+      border: 2px solid ${resultBorder};
+      background: ${resultBg};
+      border-radius: 10px;
+      padding: 14px;
+      margin: 18px 0;
+      text-align: center;
+    }
+    .sig-row {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 36px;
+      padding-top: 10px;
+      border-top: 1px dashed #CBD5E1;
+    }
+  </style>
+</head>
+<body>
+  <div class="inc-print-sheet">
+    <div class="statement-header-box">
+      <div style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:1px;">
+        ༄༅། །བོད་ཀྱི་རྩིས་དེབ། • TIBETAN ACCOUNT BOOK
+      </div>
+      <div class="statement-yiggo">
+        ༄༅། །འབབ་གྲོན་རྩིས་ཤོག
+      </div>
+      <div class="statement-eng-title">
+        STATEMENT OF INCOME AND EXPENDITURE
+      </div>
+      <div class="statement-meta-row">
+        <span>🏛️ ${t('རྩིས་དེབ།', 'Book')}: <strong>${escapeHtml(t(book.bo, book.en))}</strong></span>
+        <span>📅 ${t('རྩིས་དུས།', 'Period')}: <strong>${escapeHtml(inc.periodFrom)} → ${escapeHtml(inc.periodTo)}</strong></span>
+        <span>💱 ${t('དངུལ་ལོར།', 'Currency')}: <strong>${escapeHtml(state.currency)}</strong></span>
+        <span>🕒 ${t('ཕྱིར་འདྲེན་ཚེས།', 'Export Date')}: <strong>${escapeHtml(exportDateStr)}</strong></span>
+      </div>
+    </div>
+
+    <!-- Section 1: Income / Revenue -->
+    <div class="sec-banner" style="background:#F0FDF4;border:1.5px solid #86EFAC;color:#166534;">
+      <span>📥 ${t('༡། ཡོང་འབབ་ཁག (Income & Receipts)', '1. Income & Receipts (Revenue)')}</span>
+      <span>${formatMoney(inc.totalIncome)}</span>
+    </div>
+    <table class="inc-table">
+      <thead>
+        <tr>
+          <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
+          <th style="text-align:right;">${t('བྱུང་བསྡོམས། (Gross Receipts Cr)', 'Gross Receipts (Cr)')}</th>
+          <th style="text-align:right;">${t('སྤོ་ཆག / ཕྱིར་སློག (Adjustments Dr)', 'Adjustments (Dr)')}</th>
+          <th style="text-align:right;">${t('གཙང་འབབ། (Net Income)', 'Net Income')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${incomeRowsHtml}
+      </tbody>
+      <tfoot>
+        <tr style="background:#DCFCE7;font-weight:900;color:#166534;">
+          <td>${t('ཁྱོན་བསྡོམས་ཡོང་འབབ།', 'Total Income')}</td>
+          <td colspan="2"></td>
+          <td style="text-align:right;">${formatMoney(inc.totalIncome)}</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <!-- Section 2: Expenditure / Expenses -->
+    <div class="sec-banner" style="background:#FFF1F2;border:1.5px solid #FDA4AF;color:#9F1239;margin-top:16px;">
+      <span>📤 ${t('༢། གྲོན་སོང་ཁག (Expenditure & Disbursements)', '2. Expenditure & Disbursements')}</span>
+      <span>${formatMoney(inc.totalExpense)}</span>
+    </div>
+    <table class="inc-table">
+      <thead>
+        <tr>
+          <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
+          <th style="text-align:right;">${t('འགྲོ་གྲོན་བསྡོམས། (Gross Expenses Dr)', 'Gross Expenses (Dr)')}</th>
+          <th style="text-align:right;">${t('སྤོ་ཆག / ཕྱིར་སློག (Adjustments Cr)', 'Adjustments (Cr)')}</th>
+          <th style="text-align:right;">${t('གཙང་གྲོན། (Net Expenditure)', 'Net Expenditure')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${expenseRowsHtml}
+      </tbody>
+      <tfoot>
+        <tr style="background:#FFE4E6;font-weight:900;color:#9F1239;">
+          <td>${t('ཁྱོན་བསྡོམས་གྲོན་སོང་།', 'Total Expenditure')}</td>
+          <td colspan="2"></td>
+          <td style="text-align:right;">${formatMoney(inc.totalExpense)}</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <!-- Section 3: Bottom Line Net Result -->
+    <div class="result-box">
+      <div style="font-size:13px;font-weight:800;color:#475569;">
+        ${t(inc.resultLabelBo, inc.resultLabelEn)}
+      </div>
+      <div style="font-size:22px;font-weight:900;color:${resultColor};margin:4px 0;">
+        ${inc.isSurplus ? '+' : inc.isDeficit ? '-' : ''} ${formatMoney(inc.netResultAbs)}
+      </div>
+      <div style="font-size:11.5px;color:#64748B;">
+        ${t(inc.surplusDeficitNoteBo, inc.surplusDeficitNoteEn)}
+      </div>
+    </div>
+
+    <!-- Signatures Block -->
+    <div class="sig-row">
+      <div style="text-align:center;">
+        <div style="height:36px;border-bottom:1.5px solid #64748B;width:120px;margin:0 auto;"></div>
+        <div style="margin-top:4px;font-weight:800;font-size:11px;color:#1E293B;">✍️ ${t('རྩིས་པ།', 'Prepared by')}</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="height:36px;border-bottom:1.5px solid #64748B;width:120px;margin:0 auto;"></div>
+        <div style="margin-top:4px;font-weight:800;font-size:11px;color:#1E293B;">🔍 ${t('ཞིབ་བཤེར་པ།', 'Audited by')}</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="height:36px;border-bottom:1.5px solid #64748B;width:120px;margin:0 auto;"></div>
+        <div style="margin-top:4px;font-weight:800;font-size:11px;color:#1E293B;">👑 ${t('འགན་འཛིན།', 'Approved by Director')}</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    window.addEventListener('load', () => {
+      setTimeout(() => { try { window.print(); } catch(e){} }, 250);
+    });
+  </script>
+</body>
+</html>`;
+}
+
+function printOrExportIncomeStatement() {
+  const isCapacitor = typeof window !== 'undefined' && Boolean(window.Capacitor);
+  const htmlContent = getPrintableIncomeStatementHtml();
+
+  if (isCapacitor) {
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+    const filename = `Income_Statement_${state.activeBookId}.html`;
+    const docTitle = state.lang === 'en' ? 'Statement of Income & Expenditure' : 'འབབ་གྲོན་རྩིས་ཤོག • བོད་ཀྱི་རྩིས་དེབ།';
+    shareOrDownloadBackup(blob, filename, docTitle);
+    return;
+  }
+
+  const printWin = window.open('', '_blank');
+  if (!printWin) {
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+    const filename = `Income_Statement_${state.activeBookId}.html`;
+    shareOrDownloadBackup(blob, filename, 'Income & Expenditure Statement');
+    return;
+  }
+  printWin.document.write(htmlContent);
+  printWin.document.close();
+}
+
+function exportIncomeStatementCSV() {
+  const inc = computeIncomeStatement();
+  const book = inc.book;
+  const lines = [
+    csvEscape('༄༅། །འབབ་གྲོན་རྩིས་ཤོག • Statement of Income & Expenditure'),
+    `${csvEscape('Book')},${csvEscape(`${book.bo} (${book.en})`)}`,
+    `${csvEscape('Period')},${csvEscape(`${inc.periodFrom} to ${inc.periodTo}`)}`,
+    `${csvEscape('Currency')},${csvEscape(state.currency)}`,
+    '',
+    csvEscape('--- ༡། ཡོང་འབབ་ཁག (Income & Receipts) ---'),
+    [
+      csvEscape(t('རྩིས་འགོ། (Tibetan)', 'Account Head (Tibetan)')),
+      csvEscape(t('རྩིས་འགོ། (English)', 'Account Head (English)')),
+      csvEscape(t('དངུལ་བྱུང་བསྡོམས། (Gross Receipts Cr)', 'Gross Receipts (Cr)')),
+      csvEscape(t('སྤོ་ཆག / ཕྱིར་སློག (Adjustments Dr)', 'Adjustments (Dr)')),
+      csvEscape(t('གཙང་འབབ། (Net Income)', 'Net Income'))
+    ].join(','),
+    ...inc.incomeRows.map(r =>
+      [
+        csvEscape(r.head.bo),
+        csvEscape(r.head.en),
+        r.cr.toFixed(2),
+        r.dr.toFixed(2),
+        r.net.toFixed(2)
+      ].join(',')
+    ),
+    [
+      csvEscape(t('ཁྱོན་བསྡོམས་ཡོང་འབབ།', 'Total Income')),
+      '',
+      '',
+      '',
+      inc.totalIncome.toFixed(2)
+    ].join(','),
+    '',
+    csvEscape('--- ༢། གྲོན་སོང་ཁག (Expenditure & Disbursements) ---'),
+    [
+      csvEscape(t('རྩིས་འགོ། (Tibetan)', 'Account Head (Tibetan)')),
+      csvEscape(t('རྩིས་འགོ། (English)', 'Account Head (English)')),
+      csvEscape(t('འགྲོ་གྲོན་བསྡོམས། (Gross Expenses Dr)', 'Gross Expenses (Dr)')),
+      csvEscape(t('སྤོ་ཆག / ཕྱིར་སློག (Adjustments Cr)', 'Adjustments (Cr)')),
+      csvEscape(t('གཙང་གྲོན། (Net Expenditure)', 'Net Expenditure'))
+    ].join(','),
+    ...inc.expenseRows.map(r =>
+      [
+        csvEscape(r.head.bo),
+        csvEscape(r.head.en),
+        r.dr.toFixed(2),
+        r.cr.toFixed(2),
+        r.net.toFixed(2)
+      ].join(',')
+    ),
+    [
+      csvEscape(t('ཁྱོན་བསྡོམས་གྲོན་སོང་།', 'Total Expenditure')),
+      '',
+      '',
+      '',
+      inc.totalExpense.toFixed(2)
+    ].join(','),
+    '',
+    csvEscape('--- ༣། མཇུག་བསྡོམས། (Summary Result) ---'),
+    [
+      csvEscape(t(inc.resultLabelBo, inc.resultLabelEn)),
+      '',
+      '',
+      '',
+      inc.netResult.toFixed(2)
+    ].join(',')
+  ];
+
+  const csvContent = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const filename = `Income_Statement_${state.activeBookId}_${inc.periodFrom}_${inc.periodTo}.csv`;
+  if (typeof shareOrDownloadBackup === 'function') {
+    shareOrDownloadBackup(blob, filename, t('འབབ་གྲོན་རྩིས་ཤོག CSV', 'Income Statement CSV')).catch(() => {});
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(t('འབབ་གྲོན་རྩིས་ཤོག་ CSV ཕབ་ལེན་ཟིན་པ།', 'Income Statement CSV downloaded!'));
+  }
 }
 
 async function printOrExportVoucherSlip(txId) {
@@ -7426,7 +8143,7 @@ async function executeDeleteAccountHead(headId, force = false) {
     state.selectedAccountLedgerHeadId = 'ALL';
   }
 
-  // 5. Mark head deleted in activeBook, and remove from state.accountHeads if scoped to activeBook or unused in other books
+  // 5. Mark head deleted in activeBook
   if (!Array.isArray(book.deletedHeadIds)) {
     book.deletedHeadIds = [];
   }
@@ -7434,15 +8151,10 @@ async function executeDeleteAccountHead(headId, force = false) {
     book.deletedHeadIds.push(headId);
   }
 
-  const usedInOtherBooks =
-    state.transactions.some(
-      tx => tx.bookId !== activeBookId && (tx.drHeadId === headId || tx.crHeadId === headId)
-    ) ||
-    state.books.some(
-      b => b.id !== activeBookId && b.openingBalances && b.openingBalances[headId]
-    );
-
-  if (head.bookId === activeBookId || !usedInOtherBooks) {
+  // Only remove from state.accountHeads if this head was custom-created specifically inside the active book (head.bookId === activeBookId).
+  // Default/template heads (!head.bookId) must NEVER be removed from state.accountHeads so that other account books
+  // (and any newly created account books) can still use them!
+  if (head.bookId && head.bookId === activeBookId) {
     state.accountHeads = state.accountHeads.filter(h => h.id !== headId);
   }
 
@@ -7775,7 +8487,8 @@ function saveNewBook(fromManage = false) {
     openingBalances: {
       head_cash: openCash,
       head_sbi: openBank
-    }
+    },
+    deletedHeadIds: []
   });
   state.activeBookId = id;
   saveState();
@@ -7807,9 +8520,254 @@ function changeLanguage(lang) {
 }
 
 function changeCurrency(curr) {
+  if (curr === '__ADD_CURRENCY__') {
+    const currSelect = document.getElementById('currSelect');
+    if (currSelect) currSelect.value = state.currency;
+    openAddCurrencyModal();
+    return;
+  }
   state.currency = curr;
   saveState();
   renderAll();
+  const allCurrs = getAllCurrencies();
+  const c = allCurrs[curr] || { label: curr };
+  showToast(t(`💱 དངུལ་ལོར་ ${c.label} ལ་བསྒྱུར་ཟིན།`, `Currency set to ${c.label}`));
+}
+
+function openAddCurrencyModal() {
+  const sheet = document.getElementById('modalSheet');
+  if (!sheet) return;
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" style="color:#0C4A6E;">
+        💱 ${t('དངུལ་ལོར་གསར་པ་སྣོན་པ།', 'Add Custom Currency')}
+      </div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <!-- Quick 1-Tap Presets for Common Currencies -->
+    <div style="background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:12px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:800;color:#0369A1;margin-bottom:6px;">
+        ⚡ ${t('མགྱོགས་མྱུར་འདེམས་སྒྲིག (Quick Presets)', 'Quick Presets')}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('RMB', '¥', 'རྒྱ་སྒོར།', 'RMB / Yuan')">
+          🇨🇳 RMB (¥ རྒྱ་སྒོར)
+        </button>
+        <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('CHF', 'CHF', 'སུད་སྒོར།', 'Swiss Franc')">
+          🇨🇭 CHF (སུད་སྒོར)
+        </button>
+        <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('GBP', '£', 'དབྱིན་སྒོར།', 'British Pound')">
+          🇬🇧 GBP (£ དབྱིན་སྒོར)
+        </button>
+        <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('AUD', 'A$', 'ཨོ་སྒོར།', 'Australian Dollar')">
+          🇦🇺 AUD (A$ ཨོ་སྒོར)
+        </button>
+        <button type="button" class="mini-btn" style="background:#FFF;border-color:#38BDF8;font-size:12px;padding:5px 8px;" onclick="applyCurrencyPreset('BTN', 'Nu.', 'འབྲུག་སྒོར།', 'Bhutanese Ngultrum')">
+          🇧🇹 BTN (Nu. འབྲུག་སྒོར)
+        </button>
+      </div>
+    </div>
+
+    <!-- Custom Currency Input Form -->
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('༡། དངུལ་ལོར་ཨང་རྟགས། (Currency Code - e.g. RMB, CHF)', '1. Currency Code (e.g. RMB, CHF, GBP)')}</label>
+      <input type="text" id="newCurrCode" class="ios-input" placeholder="e.g. RMB" maxlength="6" style="text-transform:uppercase;font-weight:700;" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('༢། དངུལ་ལོར་མཚོན་རྟགས། (Symbol - e.g. ¥, CHF, £)', '2. Currency Symbol (e.g. ¥, CHF, £, A$)')}</label>
+      <input type="text" id="newCurrSymbol" class="ios-input" placeholder="e.g. ¥" maxlength="6" style="font-weight:700;" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('༣། བོད་ཡིག་མིང་། (Tibetan Name)', '3. Tibetan Name (e.g. རྒྱ་སྒོར།, སུད་སྒོར།)')}</label>
+      <input type="text" id="newCurrBo" class="ios-input" placeholder="དཔེར་ན། རྒྱ་སྒོར།" />
+    </div>
+
+    <div class="ios-input-group">
+      <label class="ios-input-label">${t('༤། དབྱིན་ཡིག་མིང་། (English Name)', '4. English Name (e.g. Chinese Yuan, Swiss Franc)')}</label>
+      <input type="text" id="newCurrEn" class="ios-input" placeholder="e.g. Chinese Yuan / RMB" />
+    </div>
+
+    <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1.3fr;gap:10px;">
+      <button type="button" class="action-btn" style="background:#E2E8F0;color:#334155;padding:12px;" onclick="closeModal()">
+        ${t('ཕྱིར་འཐེན།', 'Cancel')}
+      </button>
+      <button type="button" class="action-btn" style="background:#0284C7;color:#FFFFFF;padding:12px;font-weight:800;" onclick="saveCustomCurrency()">
+        💾 ${t('ཉར་ཚགས་དང་བཀོད་སྒྲིག', 'Save & Activate')}
+      </button>
+    </div>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function applyCurrencyPreset(code, symbol, bo, en) {
+  const codeEl = document.getElementById('newCurrCode');
+  const symEl = document.getElementById('newCurrSymbol');
+  const boEl = document.getElementById('newCurrBo');
+  const enEl = document.getElementById('newCurrEn');
+  if (codeEl) codeEl.value = code;
+  if (symEl) symEl.value = symbol;
+  if (boEl) boEl.value = bo;
+  if (enEl) enEl.value = en;
+}
+
+function saveCustomCurrency(customCode, customSymbol, customBo, customEn) {
+  const code = (document.getElementById('newCurrCode')?.value || customCode || '').trim().toUpperCase();
+  const symbol = (document.getElementById('newCurrSymbol')?.value || customSymbol || '').trim();
+  const bo = (document.getElementById('newCurrBo')?.value || customBo || '').trim();
+  const en = (document.getElementById('newCurrEn')?.value || customEn || '').trim();
+
+  if (!code || !symbol) {
+    showToast(t('དངུལ་ལོར་ཨང་རྟགས་དང་མཚོན་རྟགས་གཉིས་ཀ་འབྲི་རོགས།', 'Please enter both Currency Code and Symbol!'));
+    return;
+  }
+
+  if (!state.customCurrencies || typeof state.customCurrencies !== 'object') {
+    state.customCurrencies = {};
+  }
+
+  const label = `${symbol} ${code} (${bo || en || code})`;
+  state.customCurrencies[code] = {
+    symbol,
+    label,
+    bo: bo || en || code,
+    en: en || bo || code
+  };
+  state.currency = code;
+
+  saveState();
+  closeModal();
+  renderAll();
+  showToast(t(`✅ དངུལ་ལོར་ ${label} བཀོད་སྒྲིག་ཟིན།`, `✅ ${label} added & set as active!`));
+  return code;
+}
+
+function openAppSettingsModal() {
+  const sheet = document.getElementById('modalSheet');
+  if (!sheet) return;
+
+  const currentTextSize = state.textSize || 'normal';
+  const allCurrs = getAllCurrencies();
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-title" style="color:#1E293B;">
+        ⚙️ ${t('མཉེན་ཆས་སྒྲིག་འགོད།', 'Settings & Accessibility')}
+      </div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <!-- 1. Text Size / Readability for Elders & Monks -->
+    <div class="report-card" style="background:#F8FAFC;border:1.5px solid #CBD5E1;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:13.5px;font-weight:800;color:#0F172A;">
+          🔤 ${t('ཡི་གེའི་ཆེ་ཆུང་། (Text Size)', 'Text Size & Readability')}
+        </span>
+        <span class="badge" style="background:#E0F2FE;color:#0369A1;font-weight:700;">
+          ${currentTextSize === 'large' ? 'Large (+15%)' : currentTextSize === 'xlarge' ? 'Jumbo (+30%)' : 'Normal (100%)'}
+        </span>
+      </div>
+      <div style="font-size:11.5px;color:#64748B;line-height:1.5;margin-bottom:10px;">
+        ${t(
+          'མིག་གི་མཐོང་རྒྱ་ཞན་པའམ་རྒན་ལགས་ཚོར་ཡི་གེ་གསལ་པོར་མཐོང་ཆེད་ཆེ་རུ་གཏོང་ཐུབ།',
+          'Make Tibetan & English text larger and easier to read for elders and shopkeepers.'
+        )}
+      </div>
+
+      <!-- Segmented Bar for Font Size -->
+      <div class="segmented-bar" style="margin-bottom:8px;">
+        <button type="button" class="seg-btn ${currentTextSize === 'normal' ? 'active' : ''}" data-size="normal" onclick="setTextSize('normal')">
+          🔤 ${t('སྤྱིར་བཏང་།', 'Normal')}
+        </button>
+        <button type="button" class="seg-btn ${currentTextSize === 'large' ? 'active' : ''}" data-size="large" onclick="setTextSize('large')">
+          🔤+ ${t('ཆེ་བ།', 'Large')}
+        </button>
+        <button type="button" class="seg-btn ${currentTextSize === 'xlarge' ? 'active' : ''}" data-size="xlarge" onclick="setTextSize('xlarge')">
+          🔤++ ${t('ཆེས་ཆེ་བ།', 'Jumbo')}
+        </button>
+      </div>
+
+      <div style="background:#FFF;border:1px dashed #94A3B8;border-radius:8px;padding:8px 12px;font-size:12px;color:#334155;">
+        <span>${t('དཔེ་མཚོན། • Preview:', 'Preview:')}</span>
+        <strong style="color:#881337;margin-left:4px;">༄༅། །བོད་ཀྱི་རྩིས་དེབ། ${formatMoney(15000)}</strong>
+      </div>
+    </div>
+
+    <!-- 2. Currency & Add Currency -->
+    <div class="report-card" style="background:#F0F9FF;border:1.5px solid #BAE6FD;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:13.5px;font-weight:800;color:#0C4A6E;">
+          💱 ${t('དངུལ་ལོར་སྒྲིག་འགོད།', 'Currency Settings')}
+        </span>
+        <span class="badge" style="background:#DCFCE7;color:#166534;font-weight:700;">
+          ${escapeHtml(state.currency)}
+        </span>
+      </div>
+      <div style="font-size:11.5px;color:#475569;line-height:1.5;margin-bottom:10px;">
+        ${t(
+          'རྒྱ་གར་སྒོར་ (INR) དང་ཨ་སྒོར (USD) སོགས་འདེམས་པའམ་ཡང་ན་རྒྱ་སྒོར (RMB) དང་སུད་སྒོར (CHF) སོགས་རང་ཉིད་ཀྱི་དངུལ་ལོར་གསར་སྣོན་གནང་ཐུབ།',
+          'Switch currency or add your own custom currency such as RMB, CHF, GBP, AUD, etc.'
+        )}
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select class="ios-input" style="flex:1;font-weight:700;" onchange="changeCurrency(this.value)">
+          ${Object.keys(allCurrs)
+            .map(code => {
+              const c = allCurrs[code];
+              const sel = state.currency === code ? 'selected' : '';
+              return `<option value="${escapeHtml(code)}" ${sel}>${escapeHtml(c.label || code)}</option>`;
+            })
+            .join('')}
+        </select>
+        <button type="button" class="mini-btn" style="background:#0284C7;color:#FFF;border-color:#0284C7;padding:10px 12px;font-weight:800;white-space:nowrap;" onclick="openAddCurrencyModal()">
+          ➕ ${t('གསར་སྣོན།', 'Add New')}
+        </button>
+      </div>
+    </div>
+
+    <!-- 3. Language & Accounting Level Quick Toggles -->
+    <div class="report-card" style="background:#FFFDF5;border:1.5px solid #FCD34D;margin-bottom:12px;">
+      <div style="font-size:13.5px;font-weight:800;color:#78350F;margin-bottom:6px;">
+        🌐 ${t('སྐད་ཡིག་དང་རྩིས་རྒྱག་རིམ་པ།', 'Language & Mode')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <label class="ios-input-label" style="font-size:11px;">${t('སྐད་ཡིག', 'Language')}</label>
+          <select class="ios-input" style="font-size:12.5px;" onchange="changeLanguage(this.value)">
+            <option value="bo_en" ${state.lang === 'bo_en' ? 'selected' : ''}>བོད་ + EN</option>
+            <option value="bo" ${state.lang === 'bo' ? 'selected' : ''}>བོད་ཡིག Only</option>
+            <option value="en" ${state.lang === 'en' ? 'selected' : ''}>English Only</option>
+          </select>
+        </div>
+        <div>
+          <label class="ios-input-label" style="font-size:11px;">${t('རྩིས་རྒྱག་རིམ་པ།', 'Accounting Mode')}</label>
+          <select class="ios-input" style="font-size:12.5px;" onchange="setAccountingMode(this.value)">
+            <option value="basic" ${state.accountingMode === 'basic' ? 'selected' : ''}>🟢 Basic (Cash)</option>
+            <option value="advance" ${state.accountingMode === 'advance' ? 'selected' : ''}>⚡ Advance (Audit)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Quick Action Links -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
+      <button type="button" class="action-btn" style="background:#0F172A;color:#FEF08A;font-size:12px;padding:10px;" onclick="closeModal(); openManageBooksModal();">
+        📘 ${t('རྩིས་དེབ་དོ་དམ།', 'Manage Books')}
+      </button>
+      <button type="button" class="action-btn" style="background:#881337;color:#FEF08A;font-size:12px;padding:10px;" onclick="closeModal(); openOnboardingWizard(1);">
+        🧭 ${t('ལམ་སྟོན་བསྐྱར་འཁྲིད།', 'Setup Wizard')}
+      </button>
+    </div>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('open');
 }
 
 function setAccountingMode(mode) {
@@ -8253,9 +9211,14 @@ function syncOnboardingDraftFromDom() {
   if (sealEnEl && typeof sealEnEl.value === 'string') {
     draft.sealEn = sealEnEl.value.trim();
   }
-  if (currEl && currEl.value && CURRENCIES[currEl.value]) {
-    draft.currency = currEl.value;
-    state.currency = currEl.value;
+  if (currEl && currEl.value) {
+    if (currEl.value === '__ADD_CURRENCY__') {
+      openAddCurrencyModal();
+      currEl.value = state.currency || 'INR';
+    } else if (getAllCurrencies()[currEl.value]) {
+      draft.currency = currEl.value;
+      state.currency = currEl.value;
+    }
   }
   if (cashEl && cashEl.value !== undefined && cashEl.value !== '') {
     draft.openCash = Number(cashEl.value) || 0;
@@ -8449,9 +9412,10 @@ function completeOnboardingWizard(options = {}) {
   if (options.accountingMode && ['basic', 'advance'].includes(options.accountingMode)) {
     state.accountingMode = options.accountingMode;
   }
-  if (options.currency && CURRENCIES[options.currency]) {
+  const allCurrs = getAllCurrencies();
+  if (options.currency && allCurrs[options.currency]) {
     state.currency = options.currency;
-  } else if (draft.currency && CURRENCIES[draft.currency]) {
+  } else if (draft.currency && allCurrs[draft.currency]) {
     state.currency = draft.currency;
   }
 
@@ -8518,7 +9482,8 @@ function skipOnboardingWizard() {
 function renderOnboardingWizard() {
   const step = Math.min(4, Math.max(1, Number(state.onboardingStep) || 1));
   const draft = getOnboardingDraft();
-  const sym = (CURRENCIES[state.currency] || CURRENCIES.INR).symbol;
+  const allCurrs = getAllCurrencies();
+  const sym = (allCurrs[state.currency] || allCurrs.INR || { symbol: '₹' }).symbol;
 
   const stepDotsHtml = [1, 2, 3, 4]
     .map(s => {
@@ -8608,13 +9573,14 @@ function renderOnboardingWizard() {
       </div>
     `;
   } else if (step === 3) {
-    const currencyOptionsHtml = Object.keys(CURRENCIES)
+    const allCurrs = getAllCurrencies();
+    const currencyOptionsHtml = Object.keys(allCurrs)
       .map(code => {
-        const c = CURRENCIES[code];
+        const c = allCurrs[code];
         const sel = (draft.currency || state.currency) === code ? 'selected' : '';
-        return `<option value="${escapeHtml(code)}" ${sel}>${escapeHtml(c.label)}</option>`;
+        return `<option value="${escapeHtml(code)}" ${sel}>${escapeHtml(c.label || code)}</option>`;
       })
-      .join('');
+      .join('') + `<option value="__ADD_CURRENCY__">➕ ${t('དངུལ་ལོར་གསར་སྣོན།...', 'Add Currency...')}</option>`;
 
     stepBodyHtml = `
       <div class="onboarding-step" data-step="3">
