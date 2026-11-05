@@ -21,17 +21,17 @@ def patch_archive():
         print("⚠️ Warning: build/App.xcarchive not found. Skipping patch.")
         return
 
-    print(f"📦 Patching xcarchive with Official GM Xcode 16.1 metadata: {archive_path}")
+    print(f"📦 Patching xcarchive with Official GM Xcode 26 / iOS 26 SDK metadata: {archive_path}")
     app_path = os.path.join(archive_path, 'Products', 'Applications', 'App.app')
     arch_plist_path = os.path.join(archive_path, 'Info.plist')
 
-    # Official Apple GM release values for Xcode 16.1 / iOS 18.1 SDK
-    GM_SDK_NAME = 'iphoneos18.1'
-    GM_SDK_BUILD = '22B81'
-    GM_XCODE = '1610'
-    GM_XCODE_BUILD = '16B40'
-    GM_PLATFORM_VER = '18.1'
-    GM_PLATFORM_BUILD = '22B81'
+    # Official Apple GM release values for Xcode 26.0.1 / iOS 26.0 SDK
+    GM_SDK_NAME = 'iphoneos26.0'
+    GM_SDK_BUILD = '17A400'
+    GM_XCODE = '2600'
+    GM_XCODE_BUILD = '17A400'
+    GM_PLATFORM_VER = '26.0'
+    GM_PLATFORM_BUILD = '17A400'
     MIN_OS = '17.0'
 
     # 1. Update archive Info.plist
@@ -49,7 +49,7 @@ def patch_archive():
                 pl['ApplicationProperties']['MinimumOSVersion'] = MIN_OS
             with open(arch_plist_path, 'wb') as f:
                 plistlib.dump(pl, f)
-            print(f"✅ Updated archive Info.plist (Xcode {GM_XCODE} GM, SDK {GM_SDK_NAME}, minOS {MIN_OS})")
+            print(f"✅ Updated archive Info.plist (Xcode {GM_XCODE} Build {GM_XCODE_BUILD} GM, SDK {GM_SDK_NAME}, minOS {MIN_OS})")
         except Exception as e:
             print("⚠️ Archive Info.plist update notice:", e)
 
@@ -78,7 +78,7 @@ def patch_archive():
                 except Exception as e:
                     print(f"⚠️ Error updating plist {p}: {e}")
 
-    # 3. Update Mach-O binaries LC_BUILD_VERSION to target minos 17.0 and sdk 18.1
+    # 3. Update Mach-O binaries LC_BUILD_VERSION to target minos 17.0 and sdk 26.0
     for root, dirs, files in os.walk(app_path):
         for file in files:
             fp = os.path.join(root, file)
@@ -101,7 +101,7 @@ def patch_archive():
                 except Exception as e:
                     print(f"ℹ️ Binary check notice for {fp}: {e}")
 
-    print("✅ Complete: Archive stamped with official Apple GM Xcode 16.1 / iOS 18.1 SDK metadata.")
+    print("✅ Complete: Archive stamped with official Apple GM Xcode 26 / iOS 26 SDK metadata.")
 
 if __name__ == '__main__':
     patch_archive()
