@@ -149,6 +149,7 @@ jobs:
           APP_STORE_KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
           APP_STORE_ISSUER_ID: ${{ secrets.APP_STORE_ISSUER_ID }}
           APP_STORE_PRIVATE_KEY: ${{ secrets.APP_STORE_PRIVATE_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "$APP_STORE_PRIVATE_KEY" ] || [ -z "$APP_STORE_KEY_ID" ] || [ -z "$APP_STORE_ISSUER_ID" ]; then
             echo "ℹ️ App Store Connect API secrets not configured yet. Skipping direct upload."
@@ -159,7 +160,23 @@ jobs:
           echo "$APP_STORE_PRIVATE_KEY" > ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
           chmod 600 ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
 
-          cat << 'EOF' > exportOptions.plist
+          # Inject Apple Developer Team ID into Xcode project
+          if [ -n "$APPLE_TEAM_ID" ]; then
+            echo "Configuring Apple Developer Team ID: $APPLE_TEAM_ID"
+            node -e "
+              const fs = require('fs');
+              const pbxPath = 'ios/App/App.xcodeproj/project.pbxproj';
+              if (fs.existsSync(pbxPath)) {
+                let pbx = fs.readFileSync(pbxPath, 'utf8');
+                pbx = pbx.replace(/DevelopmentTeam = \"\";/g, 'DevelopmentTeam = \"$APPLE_TEAM_ID\";');
+                pbx = pbx.replace(/PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/g, 'PRODUCT_BUNDLE_IDENTIFIER = \$1;\n\t\t\t\tDEVELOPMENT_TEAM = $APPLE_TEAM_ID;');
+                fs.writeFileSync(pbxPath, pbx, 'utf8');
+                console.log('Successfully injected DEVELOPMENT_TEAM into project.pbxproj');
+              }
+            "
+          fi
+
+          cat << EOF > exportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -170,6 +187,8 @@ jobs:
               <string>upload</string>
               <key>signingStyle</key>
               <string>automatic</string>
+              <key>teamID</key>
+              <string>$APPLE_TEAM_ID</string>
           </dict>
           </plist>
           EOF
@@ -183,6 +202,7 @@ jobs:
             -archivePath build/App.xcarchive \
             -destination 'generic/platform=iOS' \
             -allowProvisioningUpdates \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             -authenticationKeyID "$APP_STORE_KEY_ID" \
             -authenticationKeyIssuerID "$APP_STORE_ISSUER_ID" \
             -authenticationKeyPath "$HOME/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8"
