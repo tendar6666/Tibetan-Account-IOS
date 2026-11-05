@@ -1,10 +1,22 @@
 import os
 import re
 
+def find_podfile():
+    candidates = [
+        "ios/App/Podfile",
+        "Podfile",
+        os.path.join(os.getcwd(), "ios", "App", "Podfile"),
+        os.path.join(os.getcwd(), "Podfile")
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return os.path.abspath(c)
+    return None
+
 def patch_podfile():
-    podfile_path = "ios/App/Podfile"
-    if not os.path.exists(podfile_path):
-        print(f"⚠️ Podfile not found at: {podfile_path}")
+    podfile_path = find_podfile()
+    if not podfile_path:
+        print("⚠️ Podfile not found. Skipping Podfile patch.")
         return
 
     with open(podfile_path, "r", encoding="utf-8") as f:
