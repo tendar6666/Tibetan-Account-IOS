@@ -1482,10 +1482,11 @@ function renderHeader() {
       .map(code => {
         const c = allCurrs[code];
         const sel = state.currency === code ? 'selected' : '';
-        return `<option value="${escapeHtml(code)}" ${sel}>${escapeHtml(c.label || code)}</option>`;
+        const shortLabel = c.symbol ? `${c.symbol} ${code}` : code;
+        return `<option value="${escapeHtml(code)}" ${sel}>${escapeHtml(shortLabel)}</option>`;
       })
       .join('');
-    optionsHtml += `<option value="__ADD_CURRENCY__">➕ ${t('དངུལ་ལོར་གསར་སྣོན།...', 'Add Currency...')}</option>`;
+    optionsHtml += `<option value="__ADD_CURRENCY__">➕ ${state.lang === 'bo' ? 'གསར་སྣོན།' : 'Add'}</option>`;
     currSelect.innerHTML = optionsHtml;
     currSelect.value = state.currency;
   }

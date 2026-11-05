@@ -200,12 +200,15 @@ body.fullscreen-mode .ios-home-indicator {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .app-title-wrap {
   display: flex;
   align-items: center;
   gap: 9px;
+  flex-shrink: 0;
 }
 
 .app-logo-circle {
@@ -246,6 +249,7 @@ body.fullscreen-mode .ios-home-indicator {
   gap: 6px;
   flex-shrink: 0;
   margin-left: auto;
+  min-width: 0;
 }
 
 .pill-select {
@@ -253,16 +257,30 @@ body.fullscreen-mode .ios-home-indicator {
   color: #FFFFFF;
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 999px;
+  height: 38px;
   min-height: 38px;
-  padding: 6px 10px;
-  font-size: 12.5px;
+  padding: 0 8px;
+  font-size: 12px;
   font-family: inherit;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   outline: none;
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
+  white-space: nowrap;
+}
+
+#langSelect {
+  width: auto;
+  max-width: 96px;
+  flex-shrink: 0;
+}
+
+#currSelect {
+  width: auto;
+  max-width: 92px;
+  flex-shrink: 0;
 }
 
 .pill-select option {
@@ -275,9 +293,12 @@ body.fullscreen-mode .ios-home-indicator {
   color: #FFFFFF;
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 999px;
+  height: 38px;
+  width: 38px;
   min-height: 38px;
   min-width: 38px;
-  padding: 0 8px;
+  max-width: 38px;
+  padding: 0;
   font-size: 16px;
   cursor: pointer;
   outline: none;
@@ -285,6 +306,7 @@ body.fullscreen-mode .ios-home-indicator {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  flex-shrink: 0;
   transition: background 0.15s ease;
 }
 
