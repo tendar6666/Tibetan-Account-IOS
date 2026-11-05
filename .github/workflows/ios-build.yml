@@ -83,7 +83,10 @@ jobs:
           fi
 
       - name: 5. Configure CocoaPods for Unsigned Build & Compile Native .ipa
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          python3 scripts/configure_xcode.py
           python3 scripts/patch_podfile.py
           cd ios/App
           pod install
