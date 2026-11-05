@@ -44,6 +44,11 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad array" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:0 string UIInterfaceOrientationPortrait" "$PLIST" || true
 
+          if [ -f "AppStore_Icon_1024x1024.png" ]; then
+            mkdir -p ios/App/App/Assets.xcassets/AppIcon.appiconset
+            cp AppStore_Icon_1024x1024.png ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+            echo "Copied perfected AppStore_Icon_1024x1024.png into AppIcon.appiconset"
+          else
           cat << 'EOF' > generate_icon.swift
           import AppKit
           let size = NSSize(width: 1024, height: 1024)
@@ -74,6 +79,7 @@ jobs:
           EOF
           swift generate_icon.swift || true
           rm -f generate_icon.swift
+          fi
 
       - name: 5. Configure CocoaPods for Unsigned Build & Compile Native .ipa
         run: |
