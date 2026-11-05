@@ -31,7 +31,8 @@ jobs:
           PLIST="ios/App/App/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Tibetan Account Book'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 'Tibetan Account Book'" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '2.0.0'" "$PLIST" || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '2'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '3'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion '15.0'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string '15.0'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Attach photos of bills, receipts, and vouchers directly to your accounting entries.'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Select bill and receipt photos from your library to attach to accounting vouchers.'" "$PLIST" || true
