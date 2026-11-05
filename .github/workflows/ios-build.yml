@@ -196,4 +196,7 @@ jobs:
             -authenticationKeyIssuerID "$APP_STORE_ISSUER_ID" \
             -authenticationKeyPath "$HOME/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8"
 
+          # 🔒 Secure Cleanup: Scrub the private key and exportOptions immediately
+          rm -rf ~/.private_keys ../../exportOptions.plist
+
           echo "🎉 Successfully uploaded build to App Store Connect!"

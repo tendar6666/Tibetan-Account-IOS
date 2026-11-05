@@ -3,6 +3,22 @@
 Thumbs.db
 desktop.ini
 
+# Security & Credentials (STRICT - Never commit secrets!)
+*.p8
+*.pem
+*.key
+*.p12
+*.cer
+*.mobileprovision
+*.keystore
+*.jks
+.env*
+AuthKey_*
+private_keys/
+secrets/
+credentials.json
+exportOptions.plist
+
 # Editor & Temp Files
 .vscode/
 .idea/
