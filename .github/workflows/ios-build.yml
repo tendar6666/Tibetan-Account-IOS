@@ -84,19 +84,7 @@ jobs:
 
       - name: 5. Configure CocoaPods for Unsigned Build & Compile Native .ipa
         run: |
-          node -e '
-            const fs = require("fs");
-            const podfilePath = "ios/App/Podfile";
-            if (fs.existsSync(podfilePath)) {
-              let pf = fs.readFileSync(podfilePath, "utf8");
-              pf = pf.replace(/platform :ios, '[^']+'/g, "platform :ios, '17.0'");
-              pf = pf.replace(
-                "assertDeploymentTarget(installer)",
-                "assertDeploymentTarget(installer)\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'\n      config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n      config.build_settings[\"EXPANDED_CODE_SIGN_IDENTITY\"] = \"\"\n    end\n  end"
-              );
-              fs.writeFileSync(podfilePath, pf, "utf8");
-            }
-          '
+          python3 scripts/patch_podfile.py
           cd ios/App
           pod install
 
@@ -162,22 +150,8 @@ jobs:
           echo "$APP_STORE_PRIVATE_KEY" > ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
           chmod 600 ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
 
-          # Inject Apple Developer Team ID into Xcode project
-          if [ -n "$APPLE_TEAM_ID" ]; then
-            echo "Configuring Apple Developer Team ID: $APPLE_TEAM_ID"
-            node -e "
-              const fs = require('fs');
-              const pbxPath = 'ios/App/App.xcodeproj/project.pbxproj';
-              if (fs.existsSync(pbxPath)) {
-                let pbx = fs.readFileSync(pbxPath, 'utf8');
-                pbx = pbx.replace(/DevelopmentTeam = \"\";/g, 'DevelopmentTeam = \"$APPLE_TEAM_ID\";');
-                pbx = pbx.replace(/PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/g, 'PRODUCT_BUNDLE_IDENTIFIER = \$1;\n\t\t\t\tDEVELOPMENT_TEAM = $APPLE_TEAM_ID;');
-                pbx = pbx.replace(/IPHONEOS_DEPLOYMENT_TARGET = [^;]+;/g, 'IPHONEOS_DEPLOYMENT_TARGET = 17.0;');
-                fs.writeFileSync(pbxPath, pbx, 'utf8');
-                console.log('Successfully injected DEVELOPMENT_TEAM and IPHONEOS_DEPLOYMENT_TARGET into project.pbxproj');
-              }
-            "
-          fi
+          # Inject Apple Developer Team ID and modern iOS 17.0 into Xcode project
+          python3 scripts/configure_xcode.py
 
           cat << EOF > exportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
