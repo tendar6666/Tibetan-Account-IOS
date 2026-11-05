@@ -20,6 +20,8 @@ credentials.json
 exportOptions.plist
 
 # Editor & Temp Files
+__pycache__/
+*.pyc
 .vscode/
 .idea/
 *.tmp

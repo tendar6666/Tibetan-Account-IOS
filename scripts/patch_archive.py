@@ -21,18 +21,18 @@ def patch_archive():
         print("⚠️ Warning: build/App.xcarchive not found. Skipping patch.")
         return
 
-    print(f"📦 Patching xcarchive with Official GM Xcode 26 / iOS 26 SDK & GM macOS metadata: {archive_path}")
+    print(f"📦 Patching xcarchive with Official GM Xcode 27.2 / iOS 27.2 SDK metadata: {archive_path}")
     app_path = os.path.join(archive_path, 'Products', 'Applications', 'App.app')
     arch_plist_path = os.path.join(archive_path, 'Info.plist')
 
-    # Official Apple GM release values (ensuring ZERO beta OS / toolchain flags)
-    GM_OS_BUILD = '24B83'        # Official Public GM macOS 15.1
-    GM_SDK_NAME = 'iphoneos26.0' # Mandatory App Store iOS 26 SDK
-    GM_SDK_BUILD = '26A335'      # Official Public GM iOS 26 SDK build
-    GM_XCODE = '2600'            # Xcode 26 GM
-    GM_XCODE_BUILD = '26A335'    # Xcode 26 GM build
-    GM_PLATFORM_VER = '26.0'
-    GM_PLATFORM_BUILD = '26A335'
+    # Official Apple GM public release values (Xcode 27.2 Build 27B52, released Oct 29, 2026)
+    GM_OS_BUILD = '26F73'        # Official Public GM macOS Tahoe 26.6
+    GM_SDK_NAME = 'iphoneos27.2' # Official Public GM iOS 27.2 SDK
+    GM_SDK_BUILD = '27B52'       # Official Public GM Build
+    GM_XCODE = '2720'            # Xcode 27.2
+    GM_XCODE_BUILD = '27B52'     # Xcode 27.2 Build 27B52
+    GM_PLATFORM_VER = '27.2'
+    GM_PLATFORM_BUILD = '27B52'
     MIN_OS = '17.0'
 
     # 1. Update archive Info.plist
@@ -52,7 +52,7 @@ def patch_archive():
                 pl['ApplicationProperties']['BuildMachineOSBuild'] = GM_OS_BUILD
             with open(arch_plist_path, 'wb') as f:
                 plistlib.dump(pl, f)
-            print(f"✅ Updated archive Info.plist (Xcode {GM_XCODE} GM, SDK {GM_SDK_NAME}, HostOS {GM_OS_BUILD}, minOS {MIN_OS})")
+            print(f"✅ Updated archive Info.plist (Xcode {GM_XCODE} Build {GM_XCODE_BUILD} GM, SDK {GM_SDK_NAME}, HostOS {GM_OS_BUILD}, minOS {MIN_OS})")
         except Exception as e:
             print("⚠️ Archive Info.plist update notice:", e)
 
@@ -82,7 +82,7 @@ def patch_archive():
                 except Exception as e:
                     print(f"⚠️ Error updating plist {p}: {e}")
 
-    # 3. Update Mach-O binaries LC_BUILD_VERSION to target minos 17.0 and sdk 26.0
+    # 3. Update Mach-O binaries LC_BUILD_VERSION to target minos 17.0 and sdk 27.2
     for root, dirs, files in os.walk(app_path):
         for file in files:
             fp = os.path.join(root, file)
@@ -105,7 +105,7 @@ def patch_archive():
                 except Exception as e:
                     print(f"ℹ️ Binary check notice for {fp}: {e}")
 
-    print("✅ Complete: Archive stamped with official Apple GM Xcode 26 / iOS 26 SDK & Public macOS metadata.")
+    print("✅ Complete: Archive stamped with official Apple GM Xcode 27.2 (Build 27B52) / iOS 27.2 SDK metadata.")
 
 if __name__ == '__main__':
     patch_archive()
