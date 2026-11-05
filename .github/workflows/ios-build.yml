@@ -145,12 +145,16 @@ jobs:
           retention-days: 90
 
       - name: 8. Build, Sign & Upload directly to App Store Connect
-        if: ${{ secrets.APP_STORE_PRIVATE_KEY != '' }}
         env:
           APP_STORE_KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
           APP_STORE_ISSUER_ID: ${{ secrets.APP_STORE_ISSUER_ID }}
           APP_STORE_PRIVATE_KEY: ${{ secrets.APP_STORE_PRIVATE_KEY }}
         run: |
+          if [ -z "$APP_STORE_PRIVATE_KEY" ] || [ -z "$APP_STORE_KEY_ID" ] || [ -z "$APP_STORE_ISSUER_ID" ]; then
+            echo "ℹ️ App Store Connect API secrets not configured yet. Skipping direct upload."
+            exit 0
+          fi
+          echo "🔑 App Store Connect API credentials detected! Preparing automated cloud signing & upload..."
           mkdir -p ~/.private_keys
           echo "$APP_STORE_PRIVATE_KEY" > ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
           chmod 600 ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
