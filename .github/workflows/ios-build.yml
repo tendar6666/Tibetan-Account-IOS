@@ -32,7 +32,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Tibetan Account Book'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 'Tibetan Account Book'" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '2.0.0'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '3'" "$PLIST" || true
-          /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion '15.0'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string '15.0'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion '17.0'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string '17.0'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Attach photos of bills, receipts, and vouchers directly to your accounting entries.'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Select bill and receipt photos from your library to attach to accounting vouchers.'" "$PLIST" || true
@@ -89,9 +89,10 @@ jobs:
             const podfilePath = "ios/App/Podfile";
             if (fs.existsSync(podfilePath)) {
               let pf = fs.readFileSync(podfilePath, "utf8");
+              pf = pf.replace(/platform :ios, '[^']+'/g, "platform :ios, '17.0'");
               pf = pf.replace(
                 "assertDeploymentTarget(installer)",
-                "assertDeploymentTarget(installer)\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n      config.build_settings[\"EXPANDED_CODE_SIGN_IDENTITY\"] = \"\"\n    end\n  end"
+                "assertDeploymentTarget(installer)\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'\n      config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n      config.build_settings[\"EXPANDED_CODE_SIGN_IDENTITY\"] = \"\"\n    end\n  end"
               );
               fs.writeFileSync(podfilePath, pf, "utf8");
             }
@@ -171,8 +172,9 @@ jobs:
                 let pbx = fs.readFileSync(pbxPath, 'utf8');
                 pbx = pbx.replace(/DevelopmentTeam = \"\";/g, 'DevelopmentTeam = \"$APPLE_TEAM_ID\";');
                 pbx = pbx.replace(/PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/g, 'PRODUCT_BUNDLE_IDENTIFIER = \$1;\n\t\t\t\tDEVELOPMENT_TEAM = $APPLE_TEAM_ID;');
+                pbx = pbx.replace(/IPHONEOS_DEPLOYMENT_TARGET = [^;]+;/g, 'IPHONEOS_DEPLOYMENT_TARGET = 17.0;');
                 fs.writeFileSync(pbxPath, pbx, 'utf8');
-                console.log('Successfully injected DEVELOPMENT_TEAM into project.pbxproj');
+                console.log('Successfully injected DEVELOPMENT_TEAM and IPHONEOS_DEPLOYMENT_TARGET into project.pbxproj');
               }
             "
           fi

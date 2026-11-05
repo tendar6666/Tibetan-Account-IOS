@@ -37,10 +37,10 @@ def patch_archive():
                 pl['ApplicationProperties']['DTXcodeBuild'] = '26A100'
                 pl['ApplicationProperties']['DTPlatformVersion'] = '26.0'
                 pl['ApplicationProperties']['DTPlatformBuild'] = '26A100'
-                pl['ApplicationProperties']['MinimumOSVersion'] = '15.0'
+                pl['ApplicationProperties']['MinimumOSVersion'] = '17.0'
             with open(arch_plist_path, 'wb') as f:
                 plistlib.dump(pl, f)
-            print("✅ Updated archive Info.plist to iOS 26 SDK and min OS 15.0")
+            print("✅ Updated archive Info.plist to latest iOS SDK 26.0 and modern min OS 17.0")
         except Exception as e:
             print("⚠️ Archive Info.plist update notice:", e)
 
@@ -48,7 +48,7 @@ def patch_archive():
         print(f"⚠️ App.app not found at: {app_path}")
         return
 
-    # 2. Update all Info.plists in App.app and Frameworks
+    # 2. Update all Info.plists in App.app and Frameworks to latest modern iOS 17.0
     for root, dirs, files in os.walk(app_path):
         for file in files:
             if file == 'Info.plist':
@@ -62,14 +62,14 @@ def patch_archive():
                     pl['DTXcodeBuild'] = '26A100'
                     pl['DTPlatformVersion'] = '26.0'
                     pl['DTPlatformBuild'] = '26A100'
-                    pl['MinimumOSVersion'] = '15.0'
+                    pl['MinimumOSVersion'] = '17.0'
                     with open(p, 'wb') as f:
                         plistlib.dump(pl, f)
-                    print(f"✅ Updated plist: {os.path.basename(root)}/Info.plist (minOS 15.0, SDK 26.0)")
+                    print(f"✅ Updated plist: {os.path.basename(root)}/Info.plist (minOS 17.0, SDK 26.0)")
                 except Exception as e:
                     print(f"⚠️ Error updating plist {p}: {e}")
 
-    # 3. Update Mach-O binaries LC_BUILD_VERSION using xcrun vtool
+    # 3. Update Mach-O binaries LC_BUILD_VERSION to latest modern iOS 17.0
     for root, dirs, files in os.walk(app_path):
         for file in files:
             fp = os.path.join(root, file)
@@ -79,14 +79,14 @@ def patch_archive():
                     if 'Mach-O' in res.stdout:
                         tmp = fp + '.tmp'
                         vtool_res = subprocess.run(
-                            ['xcrun', 'vtool', '-set-build-version', 'ios', '15.0', '26.0', '-replace', '-output', tmp, fp],
+                            ['xcrun', 'vtool', '-set-build-version', 'ios', '17.0', '26.0', '-replace', '-output', tmp, fp],
                             capture_output=True,
                             text=True
                         )
                         if vtool_res.returncode == 0 and os.path.exists(tmp):
                             os.replace(tmp, fp)
                             os.chmod(fp, 0o755)
-                            print(f"✅ Successfully updated Mach-O build version to minOS 15.0, SDK 26.0 for {file}")
+                            print(f"✅ Successfully updated Mach-O build version to latest minOS 17.0, SDK 26.0 for {file}")
                         else:
                             print(f"ℹ️ vtool output for {file}: {vtool_res.stderr.strip()}")
                 except Exception as e:
