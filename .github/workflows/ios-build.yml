@@ -14,9 +14,6 @@ jobs:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Select Official Public GM Xcode 16.2
-        run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
-
       - name: 2. Setup Node.js
         uses: actions/setup-node@v4
         with:
