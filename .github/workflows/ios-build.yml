@@ -143,3 +143,53 @@ jobs:
           name: Tibetan-Account-Book-Xcode-Project
           path: Tibetan-Account-Book-Xcode-Project.zip
           retention-days: 90
+
+      - name: 8. Build, Sign & Upload directly to App Store Connect
+        if: ${{ secrets.APP_STORE_PRIVATE_KEY != '' }}
+        env:
+          APP_STORE_KEY_ID: ${{ secrets.APP_STORE_KEY_ID }}
+          APP_STORE_ISSUER_ID: ${{ secrets.APP_STORE_ISSUER_ID }}
+          APP_STORE_PRIVATE_KEY: ${{ secrets.APP_STORE_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.private_keys
+          echo "$APP_STORE_PRIVATE_KEY" > ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
+          chmod 600 ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
+
+          cat << 'EOF' > exportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store-connect</string>
+              <key>destination</key>
+              <string>upload</string>
+              <key>signingStyle</key>
+              <string>automatic</string>
+          </dict>
+          </plist>
+          EOF
+
+          cd ios/App
+          # Build signed release archive using App Store Connect cloud signing
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -archivePath build/App.xcarchive \
+            -destination 'generic/platform=iOS' \
+            -allowProvisioningUpdates \
+            -authenticationKeyID "$APP_STORE_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_ISSUER_ID" \
+            -authenticationKeyPath "$HOME/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8"
+
+          # Upload archive directly to App Store Connect
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportOptionsPlist ../../exportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyID "$APP_STORE_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_ISSUER_ID" \
+            -authenticationKeyPath "$HOME/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8"
+
+          echo "🎉 Successfully uploaded build to App Store Connect!"
