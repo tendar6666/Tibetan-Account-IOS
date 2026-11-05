@@ -212,6 +212,8 @@ const DEFAULT_STATE = {
   currency: 'INR',
   customCurrencies: {},
   textSize: 'normal', // 'normal' | 'large' | 'xlarge'
+  // $0.99 Pro Advance Audit Pack (Trial Balance & Balance Sheet) Lifetime Unlock
+  isAuditPackUnlocked: false,
   // Accounting Skill Level: 'basic' (Clean Cash In/Out for shopkeepers/elders) | 'advance' (Full Contra, JV, Trial Balance & BS)
   accountingMode: 'basic',
   activeTab: 'ledger', // 'ledger' | 'heads' | 'account_ledger' | 'reports'
@@ -602,6 +604,7 @@ function sanitizeAndValidateState(incoming) {
 
   if (!merged.periodFrom || typeof merged.periodFrom !== 'string') merged.periodFrom = DEFAULT_STATE.periodFrom;
   if (!merged.periodTo || typeof merged.periodTo !== 'string') merged.periodTo = DEFAULT_STATE.periodTo;
+  merged.isAuditPackUnlocked = Boolean(merged.isAuditPackUnlocked);
 
   return sanitizeRemovedUpiHead(merged);
 }
@@ -643,6 +646,10 @@ function loadState() {
             : {},
         textSize: savedConfig.textSize || parsed.textSize || DEFAULT_STATE.textSize || 'normal',
         accountingMode: savedConfig.accountingMode || parsed.accountingMode || DEFAULT_STATE.accountingMode,
+        isAuditPackUnlocked:
+          savedConfig.isAuditPackUnlocked !== undefined
+            ? Boolean(savedConfig.isAuditPackUnlocked)
+            : Boolean(parsed.isAuditPackUnlocked),
         periodFrom: savedConfig.periodFrom || parsed.periodFrom || DEFAULT_STATE.periodFrom,
         periodTo: savedConfig.periodTo || parsed.periodTo || DEFAULT_STATE.periodTo,
         accountHeads:
@@ -682,6 +689,7 @@ function loadState() {
   if (savedConfig.currency) fresh.currency = savedConfig.currency;
   if (savedConfig.textSize) fresh.textSize = savedConfig.textSize;
   if (savedConfig.accountingMode) fresh.accountingMode = savedConfig.accountingMode;
+  if (savedConfig.isAuditPackUnlocked !== undefined) fresh.isAuditPackUnlocked = Boolean(savedConfig.isAuditPackUnlocked);
   if (savedConfig.periodFrom) fresh.periodFrom = savedConfig.periodFrom;
   if (savedConfig.periodTo) fresh.periodTo = savedConfig.periodTo;
   applyTextSize(fresh.textSize);
@@ -700,6 +708,7 @@ function saveState() {
         currency: state.currency,
         textSize: state.textSize || 'normal',
         accountingMode: state.accountingMode,
+        isAuditPackUnlocked: Boolean(state.isAuditPackUnlocked),
         periodFrom: state.periodFrom,
         periodTo: state.periodTo,
         showDrCr: state.showDrCr,
@@ -3108,6 +3117,254 @@ function shareReceiptWhatsApp(txId) {
   showToast(t('བྱུང་འཛིན་འཕྲིན་ཐུང་ངོ་བཤུས་བླངས་ཟིན།', 'Voucher copied & opening WhatsApp!'));
 }
 
+// ============================================================================
+// IN-APP PURCHASE: ADVANCE AUDIT PACK ($0.99 Non-Consumable Lifetime Unlock)
+// Product ID: com.tenzintendar.tibetanaccountbook.auditpack
+// App Store Guideline 3.1.1 Compliant (Clear pricing, value proposition & Restore)
+// ============================================================================
+const AUDIT_PACK_PRODUCT_ID = 'com.tenzintendar.tibetanaccountbook.auditpack';
+
+function renderLockedAuditPackCard() {
+  return `
+    <div class="report-card no-print" style="border:2px solid #D97706;background:linear-gradient(180deg, #FFFDF7 0%, #FEF3C7 100%);padding:18px 14px;margin-bottom:14px;box-shadow:0 6px 18px rgba(217,119,6,0.12);border-radius:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#92400E,#B45309);display:flex;align-items:center;justify-content:center;font-size:24px;color:#FEF08A;box-shadow:0 4px 10px rgba(180,83,9,0.25);">
+            🔒
+          </div>
+          <div>
+            <div style="font-size:16px;font-weight:900;color:#78350F;">
+              ${t('ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག', 'Trial Balance & Balance Sheet')}
+            </div>
+            <div style="font-size:11.5px;color:#92400E;font-weight:700;">
+              💎 ${t('Advance Audit Pack • ཆེད་ལས་རྩིས་ཞིབ།', 'Advance Audit Pack • Professional Audit Suite')}
+            </div>
+          </div>
+        </div>
+        <span class="badge" style="background:#F59E0B;color:#FFF;font-size:11.5px;font-weight:900;padding:4px 10px;border-radius:99px;box-shadow:0 2px 6px rgba(245,158,11,0.3);">
+          $0.99 / ₹89
+        </span>
+      </div>
+
+      <div style="font-size:12.5px;color:#451A03;line-height:1.6;margin-bottom:14px;">
+        ${t(
+          'ཚོད་བལྟའི་རྩིས་ཤོག་ (Trial Balance) དང་ལྷག་ཤོག་ (Balance Sheet) ཆ་ཚང་དང་། རྩིས་ཞིབ་ Excel/CSV ཕྱིར་འདྲེན། པར་འདེབས་བཅས་ཐེངས་གཅིག་སྤྲད་དེ་ཚེ་གང་བཀོལ་སྤྱོད་གནང་ཐུབ།',
+          'Unlock the complete Double-Entry Audit Pack: Full 5-column Trial Balance, Automatic Matched Balance Sheet, Bilingual Excel/CSV audit export, and printable reports. One-time lifetime unlock for $0.99 (₹89).'
+        )}
+      </div>
+
+      <!-- Feature Pill Badges -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+        <div style="background:#FFFFFF;border:1px solid #FCD34D;border-radius:10px;padding:8px 10px;font-size:11.5px;font-weight:700;color:#78350F;display:flex;align-items:center;gap:6px;">
+          <span>⚖️</span>
+          <span>${t('ཚོད་བལྟའི་རྩིས་ཤོག', '5-Col Trial Balance')}</span>
+        </div>
+        <div style="background:#FFFFFF;border:1px solid #FCD34D;border-radius:10px;padding:8px 10px;font-size:11.5px;font-weight:700;color:#78350F;display:flex;align-items:center;gap:6px;">
+          <span>🏛️</span>
+          <span>${t('ལྷག་ཤོག་ཆ་སྙོམས།', 'Matched Balance Sheet')}</span>
+        </div>
+        <div style="background:#FFFFFF;border:1px solid #FCD34D;border-radius:10px;padding:8px 10px;font-size:11.5px;font-weight:700;color:#78350F;display:flex;align-items:center;gap:6px;">
+          <span>📊</span>
+          <span>${t('CSV རྩིས་ཞིབ་ཕྱིར་འདྲེན།', 'Bilingual CSV Export')}</span>
+        </div>
+        <div style="background:#FFFFFF;border:1px solid #FCD34D;border-radius:10px;padding:8px 10px;font-size:11.5px;font-weight:700;color:#78350F;display:flex;align-items:center;gap:6px;">
+          <span>🖨️</span>
+          <span>${t('པར་འདེབས་དང་ PDF', 'Print & Save PDF')}</span>
+        </div>
+      </div>
+
+      <!-- Preview Teaser (Simulated blurred preview table) -->
+      <div style="position:relative;background:#FFFFFF;border:1.5px dashed #CBD5E1;border-radius:10px;padding:10px;margin-bottom:14px;overflow:hidden;opacity:0.8;">
+        <table class="fin-table" style="font-size:11px;filter:blur(1.5px);user-select:none;pointer-events:none;">
+          <thead>
+            <tr>
+              <th style="text-align:left;">${t('རྩིས་འགོ།', 'Account Head')}</th>
+              <th style="text-align:right;">${t('ཐོག་མ།', 'Opening')}</th>
+              <th style="text-align:right;">${t('གཡོན།', 'Debit')}</th>
+              <th style="text-align:right;">${t('གཡས།', 'Credit')}</th>
+              <th style="text-align:right;">${t('མཐའ་མ།', 'Closing')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>💵 Cash in Hand</td><td style="text-align:right;">15,000</td><td style="text-align:right;">4,500</td><td style="text-align:right;">1,200</td><td style="text-align:right;">18,300</td></tr>
+            <tr><td>🏦 State Bank of India</td><td style="text-align:right;">25,000</td><td style="text-align:right;">12,000</td><td style="text-align:right;">3,500</td><td style="text-align:right;">33,500</td></tr>
+            <tr><td>🛍️ Sales Revenue</td><td style="text-align:right;">0</td><td style="text-align:right;">0</td><td style="text-align:right;">16,500</td><td style="text-align:right;">16,500</td></tr>
+          </tbody>
+        </table>
+        <div style="position:absolute;inset:0;background:rgba(255,255,255,0.45);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#92400E;">
+          🔒 ${t('Advance Audit Pack ནང་གཟིགས་ཐུབ།', 'Locked Preview • Advance Audit Pack')}
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button type="button" class="action-btn" style="background:linear-gradient(135deg,#047857,#059669);color:#FFFFFF;padding:12px 14px;font-size:14px;font-weight:900;border-radius:12px;box-shadow:0 4px 12px rgba(5,150,105,0.3);" onclick="openUnlockAuditPackModal()">
+          💳 ${t('Advance Audit Pack ཕྱེ་བ། ($0.99 / ₹89)', 'Unlock Advance Audit Pack ($0.99 / ₹89)')}
+        </button>
+        <button type="button" class="mini-btn" style="background:transparent;border:none;color:#64748B;font-size:11.5px;padding:6px;text-decoration:underline;cursor:pointer;text-align:center;" onclick="restoreAuditPackPurchases()">
+          🔄 ${t('སྔོན་མ་ཉོས་ཟིན་པ་སླར་གསོ། (Restore Purchases)', 'Restore Purchases')}
+        </button>
+      </div>
+
+      <div style="font-size:10.5px;color:#166534;font-weight:700;text-align:center;margin-top:10px;">
+        🆓 ${t('འབབ་གྲོན་རྩིས་ཤོག ཉིན་དེབ། མི་སྣའི་ཁ་ཐ་བཅས་ནམ་ཡང་རིན་མེད་ཡིན།', 'Income Statement, Cashbook & Khata are 100% Free forever.')}
+      </div>
+    </div>
+  `;
+}
+
+function openUnlockAuditPackModal() {
+  const sheet = document.getElementById('modalSheet');
+  if (!sheet) return;
+
+  sheet.innerHTML = `
+    <div class="sheet-handle"></div>
+    <div class="sheet-header" style="border-bottom:1.5px solid #FCD34D;">
+      <div class="sheet-title" style="color:#78350F;display:flex;align-items:center;gap:6px;">
+        <span>💎 ${t('Advance Audit Pack (རྩིས་ཞིབ་ཚོད་བལྟའི་ཁྱད་དེབ།)', 'Advance Audit Pack')}</span>
+      </div>
+      <button class="sheet-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div style="padding:16px 14px;text-align:center;">
+      <div style="width:64px;height:64px;margin:0 auto 12px;background:linear-gradient(135deg,#92400E,#D97706);border-radius:18px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 18px rgba(180,83,9,0.25);font-size:30px;color:#FEF08A;">
+        ⚖️
+      </div>
+
+      <div style="font-size:18px;font-weight:900;color:#1E293B;margin-bottom:6px;">
+        ${t('ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག', 'Trial Balance & Balance Sheet')}
+      </div>
+      <div style="font-size:12.5px;color:#64748B;line-height:1.55;margin-bottom:14px;max-width:340px;margin-left:auto;margin-right:auto;">
+        ${t(
+          'ཆེད་ལས་རྩིས་པའི་ཚོད་བལྟའི་རྩིས་ཤོག ལྷག་ཤོག་ཆ་ཚང་དང་། རྩིས་ཞིབ་ Excel/CSV ཕྱིར་འདྲེན། པར་འདེབས་བཅས་ཐེངས་གཅིག་སྤྲད་དེ་ཚེ་གང་བཀོལ་སྤྱོད་གནང་ཐུབ།',
+          'Unlock full professional Double-Entry Trial Balance, Matched Balance Sheet, Bilingual Excel/CSV exports, and PDF reports.'
+        )}
+      </div>
+
+      <!-- Price Callout Card -->
+      <div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:14px;padding:12px;margin-bottom:14px;">
+        <div style="font-size:10.5px;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:0.5px;">
+          ${t('ཐེངས་གཅིག་སྤྲོད་པའི་རིན་གོང་། • ONE-TIME PURCHASE', 'ONE-TIME LIFETIME PURCHASE')}
+        </div>
+        <div style="font-size:26px;font-weight:900;color:#78350F;margin:4px 0;">
+          $0.99 <span style="font-size:14px;font-weight:700;color:#B45309;">(₹89 INR)</span>
+        </div>
+        <div style="font-size:11.5px;color:#047857;font-weight:700;">
+          ✨ ${t('ཟླ་རེའི་རིན་དོད་མེད། དྲ་མེད་སྐབས་ཀྱང་བཀོལ་ཐུབ། ནང་མི་མཉམ་སྤྱོད།', 'No subscriptions • Works 100% Offline • Family Sharing')}
+        </div>
+      </div>
+
+      <!-- Included Features List -->
+      <div style="text-align:left;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:#334155;line-height:1.8;">
+        <div>✅ <strong>${t('ཚོད་བལྟའི་རྩིས་ཤོག', 'Trial Balance')}</strong>: ${t('ཐོག་མའི་ལྷག་མ་དང་གཡོན་གཡས་མཐའ་མའི་བསྡོམས་ཐོབ།', 'Opening, Debit, Credit & Closing columns')}</div>
+        <div>✅ <strong>${t('ལྷག་ཤོག', 'Balance Sheet')}</strong>: ${t('རྒྱུ་དངོས་དང་མ་རྩ་བུ་ལོན་གཉིས་ཆ་སྙོམས་རང་འགྲིག', 'Assets & Liabilities automatic balancing')}</div>
+        <div>✅ <strong>${t('Excel/CSV ཕྱིར་འདྲེན།', 'CSV Export')}</strong>: ${t('ཆེད་ལས་རྩིས་ཞིབ་པ་དང་རྩིས་ཁང་ལ་སྤྲོད་ཆོག', 'Bilingual audit spreadsheets')}</div>
+        <div>✅ <strong>${t('པར་འདེབས་དང་ PDF', 'Print & PDF')}</strong>: ${t('ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག་པར་འདེབས་དང་ཉར་ཚགས།', 'Official audit printouts')}</div>
+        <div style="color:#15803D;font-weight:700;border-top:1px dashed #CBD5E1;margin-top:6px;padding-top:4px;">
+          🆓 ${t('ཉིན་དེབ་དང་འབབ་གྲོན་རྩིས་ཤོག་ནམ་ཡང་རིན་མེད་ཡིན།', 'Cashbook, Ledger & Income Statement remain 100% Free forever.')}
+        </div>
+      </div>
+
+      <!-- Purchase CTA -->
+      <button type="button" class="action-btn" style="width:100%;background:linear-gradient(135deg,#047857,#059669);color:#FFFFFF;padding:14px;font-size:15px;font-weight:900;border-radius:12px;box-shadow:0 6px 16px rgba(5,150,105,0.3);margin-bottom:10px;" onclick="purchaseAuditPack()">
+        💳 ${t('Advance Audit Pack ཕྱེ་བ། ($0.99 / ₹89)', 'Unlock Advance Audit Pack ($0.99 / ₹89)')}
+      </button>
+
+      <!-- Apple Guideline 3.1.1 Restore Purchases -->
+      <button type="button" class="mini-btn" style="width:100%;background:transparent;border:none;color:#64748B;font-size:12px;padding:6px;text-decoration:underline;cursor:pointer;" onclick="restoreAuditPackPurchases()">
+        🔄 ${t('སྔོན་མ་ཉོས་ཟིན་པ་སླར་གསོ། (Restore Purchases)', 'Restore Existing Purchases')}
+      </button>
+    </div>
+  `;
+
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+
+function purchaseAuditPack() {
+  // Check for native iOS / Capacitor / WebKit StoreKit bridge
+  if (typeof window !== 'undefined' && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.purchaseIAP) {
+    try {
+      window.webkit.messageHandlers.purchaseIAP.postMessage({
+        productId: AUDIT_PACK_PRODUCT_ID
+      });
+      showToast(t('Apple App Store སྦྲེལ་མཐུད་བྱེད་བཞིན་པ།...', 'Connecting to App Store...'));
+      return;
+    } catch (err) {
+      console.warn('Native StoreKit postMessage error:', err);
+    }
+  }
+
+  // Capacitor StoreKit Plugin (if installed)
+  if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PurchasePlugin) {
+    window.Capacitor.Plugins.PurchasePlugin.purchase({ productId: AUDIT_PACK_PRODUCT_ID })
+      .then(() => {
+        handleIAPPurchaseSuccess();
+      })
+      .catch(() => {
+        showToast(t('ཉོ་ཐོ་ཕྱིར་འཐེན་བྱས་པའམ་མ་འགྲིག་པ།', 'Purchase canceled or failed'));
+      });
+    return;
+  }
+
+  // Web Browser / Simulator mode: StoreKit sandbox mock
+  showToast(t('🛒 StoreKit སྦྲེལ་མཐུད་བྱེད་བཞིན་པ། ($0.99)', 'Connecting to App Store ($0.99)...'));
+  setTimeout(() => {
+    const confirmed = typeof confirm === 'function' ? confirm(
+      t(
+        'Apple App Store ནང་ Advance Audit Pack ($0.99 / ₹89) ཉོ་བར་གཏན་འཁེལ་ཡིན་ནམ?\n\n(StoreKit Sandbox ཚོད་ལྟའི་སྐབས་སུ་ "OK" མནན་ན་ཁྱད་དེབ་འཕྲལ་དུ་ཕྱེ་ཐུབ།)',
+        'Purchase Advance Audit Pack for $0.99 / ₹89 on Apple App Store?\n\nClick OK to confirm purchase and unlock Trial Balance & Balance Sheet.'
+      )
+    ) : true;
+    if (confirmed) {
+      handleIAPPurchaseSuccess();
+    }
+  }, 300);
+}
+
+function handleIAPPurchaseSuccess() {
+  state.isAuditPackUnlocked = true;
+  saveState();
+  renderAll();
+  closeModal();
+  showToast(t('🎉 Advance Audit Pack ཁྱད་དེབ་ལེགས་གྲུབ་ངང་ཕྱེ་ཟིན།', '🎉 Advance Audit Pack Unlocked Successfully!'));
+}
+
+function restoreAuditPackPurchases() {
+  if (typeof window !== 'undefined' && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.restoreIAP) {
+    try {
+      window.webkit.messageHandlers.restoreIAP.postMessage({});
+      showToast(t('Apple App Store ནས་སྔོན་མའི་ཉོས་ཟིན་སླར་གསོ་བྱེད་བཞིན་པ།...', 'Restoring purchases from App Store...'));
+      return;
+    } catch (err) {
+      console.warn('Native StoreKit restore error:', err);
+    }
+  }
+
+  if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PurchasePlugin) {
+    window.Capacitor.Plugins.PurchasePlugin.restorePurchases()
+      .then((res) => {
+        if (res && res.unlocked) {
+          handleIAPPurchaseSuccess();
+        } else {
+          showToast(t('ℹ️ ཉོས་ཟིན་རྩིས་ཐོ་གསར་པ་མ་རྙེད།', 'No previous purchases found for this Apple ID.'));
+        }
+      })
+      .catch(() => {
+        showToast(t('ℹ️ ཉོས་ཟིན་རྩིས་ཐོ་གསར་པ་མ་རྙེད།', 'No previous purchases found for this Apple ID.'));
+      });
+    return;
+  }
+
+  showToast(t('🔄 ཉོས་ཟིན་བརྟག་ཞིབ་བྱེད་བཞིན་པ།...', 'Checking purchase history...'));
+  setTimeout(() => {
+    if (state.isAuditPackUnlocked) {
+      showToast(t('✅ Advance Audit Pack སྔོན་ནས་ཉོས་ཟིན་འདུག', 'Advance Audit Pack is already active!'));
+    } else {
+      showToast(t('ℹ️ ཉོས་ཟིན་རྩིས་ཐོ་གསར་པ་མ་རྙེད།', 'No previous purchases found for this Apple ID.'));
+    }
+  }, 500);
+}
+
 // ----------------------------------------------------------------------------
 // TAB 4: ཚོད་བལྟའི་རྩིས་ཤོག (TRIAL BALANCE WITH PERIOD) & ལྷག་ཤོག (BALANCE SHEET)
 // ----------------------------------------------------------------------------
@@ -3374,7 +3631,8 @@ function renderReportsTab() {
 
     ${
       isAdvance
-        ? `
+        ? (state.isAuditPackUnlocked
+            ? `
     <!-- 2. ཚོད་བལྟའི་རྩིས་ཤོག (TRIAL BALANCE: Opening, Dr, Cr, Closing) -->
     <div class="report-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
@@ -3600,6 +3858,7 @@ function renderReportsTab() {
       </div>
     </div>
     `
+            : renderLockedAuditPackCard())
         : `
     <!-- Simple Mode Notice & Instant Pro Switch -->
     <div class="report-card no-print" style="background:#FFFBEB;border:2px dashed #F59E0B;text-align:center;padding:16px;">
@@ -3810,6 +4069,10 @@ function generateBilingualCsvContent(bookId, periodFrom, periodTo) {
 }
 
 function exportBilingualCSV() {
+  if (!state.isAuditPackUnlocked) {
+    openUnlockAuditPackModal();
+    return;
+  }
   const csvContent = generateBilingualCsvContent(state.activeBookId, state.periodFrom, state.periodTo);
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const filename = `Tibetan_Account_Book_Report_${state.activeBookId}.csv`;
@@ -4989,6 +5252,10 @@ function getPrintableTrialBalanceHtml() {
 }
 
 function printOrExportTrialBalance() {
+  if (!state.isAuditPackUnlocked) {
+    openUnlockAuditPackModal();
+    return;
+  }
   const isCapacitor = typeof window !== 'undefined' && Boolean(window.Capacitor);
   const htmlContent = getPrintableTrialBalanceHtml();
 
@@ -8756,6 +9023,31 @@ function openAppSettingsModal() {
             <option value="advance" ${state.accountingMode === 'advance' ? 'selected' : ''}>⚡ Advance (Audit)</option>
           </select>
         </div>
+      </div>
+    </div>
+
+    <!-- 3B. Advance Audit Pack In-App Purchase Status -->
+    <div class="report-card" style="background:${state.isAuditPackUnlocked ? '#F0FDF4' : '#FFFDF5'};border:1.5px solid ${state.isAuditPackUnlocked ? '#86EFAC' : '#FCD34D'};margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:13.5px;font-weight:800;color:${state.isAuditPackUnlocked ? '#166534' : '#78350F'};">
+          💎 ${t('Advance Audit Pack (རྩིས་ཞིབ་ཁྱད་དེབ།)', 'Advance Audit Pack')}
+        </span>
+        <span class="badge" style="background:${state.isAuditPackUnlocked ? '#DCFCE7' : '#FEF3C7'};color:${state.isAuditPackUnlocked ? '#15803D' : '#B45309'};font-weight:800;">
+          ${state.isAuditPackUnlocked ? t('🟢 ཕྱེ་ཟིན། (Active)', '🟢 Active') : '$0.99 / ₹89'}
+        </span>
+      </div>
+      <div style="font-size:11.5px;color:#475569;line-height:1.5;margin-bottom:10px;">
+        ${state.isAuditPackUnlocked
+          ? t('ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག CSV ཕྱིར་འདྲེན་ཆ་ཚང་ཚེ་གང་བཀོལ་སྤྱོད་ཆོག', 'Trial Balance, Balance Sheet and CSV audit exports are unlocked for lifetime use.')
+          : t('ཚོད་བལྟའི་རྩིས་ཤོག་དང་ལྷག་ཤོག CSV ཕྱིར་འདྲེན་སོགས་ཐེངས་གཅིག་སྤྲད་དེ་ཚེ་གང་བཀོལ་ཐུབ།', 'Unlock full Trial Balance, Balance Sheet, and CSV audit exports for a one-time payment.')}
+      </div>
+      <div style="display:flex;gap:8px;">
+        ${!state.isAuditPackUnlocked
+          ? `<button type="button" class="mini-btn" style="flex:1;background:#059669;color:#FFF;border-color:#059669;padding:9px 12px;font-weight:800;" onclick="closeModal(); openUnlockAuditPackModal();">💳 ${t('ཁྱད་དེབ་ཕྱེ་བ། ($0.99)', 'Unlock Pack ($0.99)')}</button>`
+          : ''}
+        <button type="button" class="mini-btn" style="${state.isAuditPackUnlocked ? 'width:100%;' : ''}background:#F1F5F9;color:#475569;border-color:#CBD5E1;padding:9px 12px;font-weight:700;" onclick="restoreAuditPackPurchases()">
+          🔄 ${t('སྔོན་མ་ཉོས་ཟིན་པ་སླར་གསོ།', 'Restore Purchases')}
+        </button>
       </div>
     </div>
 
