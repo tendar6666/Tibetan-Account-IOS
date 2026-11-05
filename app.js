@@ -3168,14 +3168,14 @@ function renderLockedAuditPackCard() {
           </div>
         </div>
         <span class="badge" style="background:#F59E0B;color:#FFF;font-size:11.5px;font-weight:900;padding:4px 10px;border-radius:99px;box-shadow:0 2px 6px rgba(245,158,11,0.3);">
-          $0.99 / ₹89
+          $0.99 / ₹99
         </span>
       </div>
 
       <div style="font-size:12.5px;color:#451A03;line-height:1.6;margin-bottom:14px;">
         ${t(
           'ཚོད་བལྟའི་རྩིས་ཤོག་ (Trial Balance) དང་ལྷག་ཤོག་ (Balance Sheet) ཆ་ཚང་དང་། རྩིས་ཞིབ་ Excel/CSV ཕྱིར་འདྲེན། པར་འདེབས་བཅས་ཐེངས་གཅིག་སྤྲད་དེ་ཚེ་གང་བཀོལ་སྤྱོད་གནང་ཐུབ།',
-          'Unlock the complete Double-Entry Audit Pack: Full 5-column Trial Balance, Automatic Matched Balance Sheet, Bilingual Excel/CSV audit export, and printable reports. One-time lifetime unlock for $0.99 (₹89).'
+          'Unlock the complete Double-Entry Audit Pack: Full 5-column Trial Balance, Automatic Matched Balance Sheet, Bilingual Excel/CSV audit export, and printable reports. One-time lifetime unlock for $0.99 (₹99).'
         )}
       </div>
 
@@ -3225,7 +3225,7 @@ function renderLockedAuditPackCard() {
       <!-- Action Buttons -->
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button type="button" class="action-btn" style="background:linear-gradient(135deg,#047857,#059669);color:#FFFFFF;padding:12px 14px;font-size:14px;font-weight:900;border-radius:12px;box-shadow:0 4px 12px rgba(5,150,105,0.3);" onclick="openUnlockAuditPackModal()">
-          💳 ${t('Advance Audit Pack ཕྱེ་བ། ($0.99 / ₹89)', 'Unlock Advance Audit Pack ($0.99 / ₹89)')}
+          💳 ${t('Advance Audit Pack ཕྱེ་བ། ($0.99 / ₹99)', 'Unlock Advance Audit Pack ($0.99 / ₹99)')}
         </button>
         <button type="button" class="mini-btn" style="background:transparent;border:none;color:#64748B;font-size:11.5px;padding:6px;text-decoration:underline;cursor:pointer;text-align:center;" onclick="restoreAuditPackPurchases()">
           🔄 ${t('སྔོན་མ་ཉོས་ཟིན་པ་སླར་གསོ། (Restore Purchases)', 'Restore Purchases')}
@@ -3273,7 +3273,7 @@ function openUnlockAuditPackModal() {
           ${t('ཐེངས་གཅིག་སྤྲོད་པའི་རིན་གོང་། • ONE-TIME PURCHASE', 'ONE-TIME LIFETIME PURCHASE')}
         </div>
         <div style="font-size:26px;font-weight:900;color:#78350F;margin:4px 0;">
-          $0.99 <span style="font-size:14px;font-weight:700;color:#B45309;">(₹89 INR)</span>
+          $0.99 <span style="font-size:14px;font-weight:700;color:#B45309;">(₹99 INR)</span>
         </div>
         <div style="font-size:11.5px;color:#047857;font-weight:700;">
           ✨ ${t('ཟླ་རེའི་རིན་དོད་མེད། དྲ་མེད་སྐབས་ཀྱང་བཀོལ་ཐུབ། ནང་མི་མཉམ་སྤྱོད།', 'No subscriptions • Works 100% Offline • Family Sharing')}
@@ -3293,7 +3293,7 @@ function openUnlockAuditPackModal() {
 
       <!-- Purchase CTA -->
       <button type="button" class="action-btn" style="width:100%;background:linear-gradient(135deg,#047857,#059669);color:#FFFFFF;padding:14px;font-size:15px;font-weight:900;border-radius:12px;box-shadow:0 6px 16px rgba(5,150,105,0.3);margin-bottom:10px;" onclick="purchaseAuditPack()">
-        💳 ${t('Advance Audit Pack ཕྱེ་བ། ($0.99 / ₹89)', 'Unlock Advance Audit Pack ($0.99 / ₹89)')}
+        💳 ${t('Advance Audit Pack ཕྱེ་བ། ($0.99 / ₹99)', 'Unlock Advance Audit Pack ($0.99 / ₹99)')}
       </button>
 
       <!-- Apple Guideline 3.1.1 Restore Purchases -->
@@ -3337,8 +3337,8 @@ function purchaseAuditPack() {
   setTimeout(() => {
     const confirmed = typeof confirm === 'function' ? confirm(
       t(
-        'Apple App Store ནང་ Advance Audit Pack ($0.99 / ₹89) ཉོ་བར་གཏན་འཁེལ་ཡིན་ནམ?\n\n(StoreKit Sandbox ཚོད་ལྟའི་སྐབས་སུ་ "OK" མནན་ན་ཁྱད་དེབ་འཕྲལ་དུ་ཕྱེ་ཐུབ།)',
-        'Purchase Advance Audit Pack for $0.99 / ₹89 on Apple App Store?\n\nClick OK to confirm purchase and unlock Trial Balance & Balance Sheet.'
+        'Apple App Store ནང་ Advance Audit Pack ($0.99 / ₹99) ཉོ་བར་གཏན་འཁེལ་ཡིན་ནམ?\n\n(StoreKit Sandbox ཚོད་ལྟའི་སྐབས་སུ་ "OK" མནན་ན་ཁྱད་དེབ་འཕྲལ་དུ་ཕྱེ་ཐུབ།)',
+        'Purchase Advance Audit Pack for $0.99 / ₹99 on Apple App Store?\n\nClick OK to confirm purchase and unlock Trial Balance & Balance Sheet.'
       )
     ) : true;
     if (confirmed) {
@@ -9096,7 +9096,7 @@ function openAppSettingsModal() {
           💎 ${t('Advance Audit Pack (རྩིས་ཞིབ་ཁྱད་དེབ།)', 'Advance Audit Pack')}
         </span>
         <span class="badge" style="background:${state.isAuditPackUnlocked ? '#DCFCE7' : '#FEF3C7'};color:${state.isAuditPackUnlocked ? '#15803D' : '#B45309'};font-weight:800;">
-          ${state.isAuditPackUnlocked ? t('🟢 ཕྱེ་ཟིན། (Active)', '🟢 Active') : '$0.99 / ₹89'}
+          ${state.isAuditPackUnlocked ? t('🟢 ཕྱེ་ཟིན། (Active)', '🟢 Active') : '$0.99 / ₹99'}
         </span>
       </div>
       <div style="font-size:11.5px;color:#475569;line-height:1.5;margin-bottom:10px;">
