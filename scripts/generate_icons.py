@@ -4,6 +4,12 @@ import json
 import subprocess
 import shutil
 
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 def generate_icons():
     # Locate AppStore_Icon_1024x1024.png
     candidates = [
@@ -39,9 +45,16 @@ def generate_icons():
 
     for fname, w, h, idiom, size_str, scale_str in icon_specs:
         dst = os.path.join(icon_dir, fname)
-        # Try macOS sips tool first
-        res = subprocess.run(["sips", "-z", str(h), str(w), icon_src, "--out", dst], capture_output=True, text=True)
-        if res.returncode != 0 or not os.path.exists(dst):
+        # Try macOS sips tool first if available
+        sips_success = False
+        try:
+            res = subprocess.run(["sips", "-z", str(h), str(w), icon_src, "--out", dst], capture_output=True, text=True)
+            if res.returncode == 0 and os.path.exists(dst):
+                sips_success = True
+        except Exception:
+            pass
+
+        if not sips_success:
             shutil.copyfile(icon_src, dst)
 
         images_json.append({

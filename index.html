@@ -23,42 +23,7 @@
 </head>
 <body>
 
-  <!-- Windows iOS Preview Control Bar (Automatically hidden on real iPhones) -->
-  <header class="desktop-toolbar no-print">
-    <div class="toolbar-brand">
-      <span class="toolbar-badge">༄༅། །བོད་ཀྱི་རྩིས་དེབ།</span>
-      <div>
-        <div style="font-size:14px;font-weight:700;">Tibetan Account Book • བོད་ཀྱི་རྩིས་དེབ། (iOS App)</div>
-        <div style="font-size:12px;color:#CBD5E1;">
-          Built on Windows • Installable on iPhone via Safari ("Add to Home Screen")
-        </div>
-      </div>
-    </div>
-
-    <div class="toolbar-actions">
-      <button id="btnFrameMode" class="toolbar-btn active" onclick="toggleViewMode('frame')">
-        📱 iPhone 16 Pro View
-      </button>
-      <button id="btnFullMode" class="toolbar-btn" onclick="toggleViewMode('full')">
-        🖥️ Expanded View
-      </button>
-      <button class="toolbar-btn" onclick="resetDemoData()">
-        🔄 Reset Sample Data
-      </button>
-    </div>
-  </header>
-
-  <!-- iPhone 16 Pro Simulator Shell -->
   <main class="iphone-shell">
-    <!-- iOS Status Bar & Dynamic Island -->
-    <div class="ios-status-bar">
-      <span>9:41</span>
-      <div class="dynamic-island">
-        <div class="dynamic-island-Dot"></div>
-      </div>
-      <span>5G 🔋</span>
-    </div>
-
     <!-- Toast Notification Banner -->
     <div id="iosToast" class="ios-toast"></div>
 

@@ -2,6 +2,12 @@ import os
 import re
 import sys
 
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 def find_pbx():
     candidates = [
         'ios/App/App.xcodeproj/project.pbxproj',
