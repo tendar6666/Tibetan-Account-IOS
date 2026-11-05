@@ -212,6 +212,7 @@ const DEFAULT_STATE = {
   currency: 'INR',
   customCurrencies: {},
   textSize: 'normal', // 'normal' | 'large' | 'xlarge'
+  photoQuality: 'standard', // 'compact' (~90KB, 1024px) | 'standard' (~150KB, 1280px) | 'hd' (~400KB, 1600px)
   // $0.99 Pro Advance Audit Pack (Trial Balance & Balance Sheet) Lifetime Unlock
   isAuditPackUnlocked: false,
   // Accounting Skill Level: 'basic' (Clean Cash In/Out for shopkeepers/elders) | 'advance' (Full Contra, JV, Trial Balance & BS)
@@ -600,6 +601,7 @@ function sanitizeAndValidateState(incoming) {
   const allCurrencies = { ...CURRENCIES, ...(merged.customCurrencies || {}) };
   if (!allCurrencies[merged.currency]) merged.currency = 'INR';
   if (!['normal', 'large', 'xlarge'].includes(merged.textSize)) merged.textSize = 'normal';
+  if (!['compact', 'standard', 'hd'].includes(merged.photoQuality)) merged.photoQuality = 'standard';
   if (!merged.customCurrencies || typeof merged.customCurrencies !== 'object') merged.customCurrencies = {};
 
   if (!merged.periodFrom || typeof merged.periodFrom !== 'string') merged.periodFrom = DEFAULT_STATE.periodFrom;
@@ -645,6 +647,7 @@ function loadState() {
             ? parsed.customCurrencies
             : {},
         textSize: savedConfig.textSize || parsed.textSize || DEFAULT_STATE.textSize || 'normal',
+        photoQuality: savedConfig.photoQuality || parsed.photoQuality || DEFAULT_STATE.photoQuality || 'standard',
         accountingMode: savedConfig.accountingMode || parsed.accountingMode || DEFAULT_STATE.accountingMode,
         isAuditPackUnlocked:
           savedConfig.isAuditPackUnlocked !== undefined
@@ -688,6 +691,7 @@ function loadState() {
   if (savedConfig.lang) fresh.lang = savedConfig.lang;
   if (savedConfig.currency) fresh.currency = savedConfig.currency;
   if (savedConfig.textSize) fresh.textSize = savedConfig.textSize;
+  if (savedConfig.photoQuality) fresh.photoQuality = savedConfig.photoQuality;
   if (savedConfig.accountingMode) fresh.accountingMode = savedConfig.accountingMode;
   if (savedConfig.isAuditPackUnlocked !== undefined) fresh.isAuditPackUnlocked = Boolean(savedConfig.isAuditPackUnlocked);
   if (savedConfig.periodFrom) fresh.periodFrom = savedConfig.periodFrom;
@@ -707,6 +711,7 @@ function saveState() {
         lang: state.lang,
         currency: state.currency,
         textSize: state.textSize || 'normal',
+        photoQuality: state.photoQuality || 'standard',
         accountingMode: state.accountingMode,
         isAuditPackUnlocked: Boolean(state.isAuditPackUnlocked),
         periodFrom: state.periodFrom,
@@ -745,6 +750,26 @@ function applyTextSize(size = (typeof state !== 'undefined' && state && state.te
     if (document.body) {
       document.body.setAttribute('data-text-size', size);
     }
+  }
+}
+
+// Receipt Photo Quality & Compression Setting (iPhone 15/16/17 Pro Max Optimization)
+function setPhotoQuality(quality) {
+  if (!['compact', 'standard', 'hd'].includes(quality)) quality = 'standard';
+  state.photoQuality = quality;
+  saveState();
+  showToast(
+    quality === 'compact'
+      ? t('⚡ འདྲ་པར་གྱི་སྤུས་ཚད་ཆུང་ཤོས་སྒྲིག་ཟིན། (~90KB)', 'Photo Quality set to Compact (~90KB)')
+      : quality === 'hd'
+      ? t('🖼️ འདྲ་པར་གྱི་སྤུས་ཚད་མཐོ་ཤོས་སྒྲིག་ཟིན། (~400KB)', 'Photo Quality set to Full HD (~400KB)')
+      : t('📄 འདྲ་པར་གྱི་སྤུས་ཚད་ཚད་ལྡན་སྒྲིག་ཟིན། (~150KB)', 'Photo Quality set to Crisp Standard (~150KB)')
+  );
+  if (typeof renderAll === 'function') renderAll();
+  const sheet = document.getElementById('modalSheet');
+  const backdrop = document.getElementById('modalBackdrop');
+  if (sheet && backdrop && backdrop.classList.contains('open')) {
+    openAppSettingsModal();
   }
 }
 
@@ -6010,7 +6035,14 @@ async function handleBillFileInputChange(event) {
     }
 
     try {
-      const compressed = await compressImageFile(file, 1600, 0.8);
+      const photoQualitySetting = (state && state.photoQuality) || 'standard';
+      const qualityPresets = {
+        compact: { maxDim: 1024, quality: 0.65 },
+        standard: { maxDim: 1280, quality: 0.72 },
+        hd: { maxDim: 1600, quality: 0.80 }
+      };
+      const preset = qualityPresets[photoQualitySetting] || qualityPresets.standard;
+      const compressed = await compressImageFile(file, preset.maxDim, preset.quality);
       // Unique ID for each attachment even with identical filenames (satisfies T2_F14_03)
       const attId = 'att_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 
@@ -8967,6 +8999,36 @@ function openAppSettingsModal() {
       <div style="background:#FFF;border:1px dashed #94A3B8;border-radius:8px;padding:8px 12px;font-size:12px;color:#334155;">
         <span>${t('དཔེ་མཚོན། • Preview:', 'Preview:')}</span>
         <strong style="color:#881337;margin-left:4px;">༄༅། །བོད་ཀྱི་རྩིས་དེབ། ${formatMoney(15000)}</strong>
+      </div>
+    </div>
+
+    <!-- 1B. Photo Attachment Compression Quality (iPhone 17 Pro Max Camera Optimization) -->
+    <div class="report-card" style="background:#F8FAFC;border:1.5px solid #CBD5E1;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:13.5px;font-weight:800;color:#0F172A;">
+          📸 ${t('འདྲ་པར་གྱི་སྤུས་ཚད། (Photo Quality)', 'Receipt Photo Quality & Size')}
+        </span>
+        <span class="badge" style="background:#DCFCE7;color:#166534;font-weight:700;">
+          ${(state.photoQuality || 'standard') === 'compact' ? '⚡ Compact (~90KB)' : (state.photoQuality || 'standard') === 'hd' ? '🖼️ HD (~400KB)' : '📄 Crisp (~150KB)'}
+        </span>
+      </div>
+      <div style="font-size:11.5px;color:#64748B;line-height:1.5;margin-bottom:10px;">
+        ${t(
+          'iPhone 17 Pro Max འདྲ་པར་ཆེ་བ་རྣམས་ཡི་གེ་གསལ་པོ་རང་འཇགས་ཐོག་ 98% ཆུང་དུ་བཏང་ནས་ཁ་པར་གྱི་ཤོང་ཚད་གྲོན་ཆུང་བྱེད།',
+          'Downsample massive iPhone 48MP photos into lightweight receipts (~150KB) while keeping printed text razor sharp.'
+        )}
+      </div>
+
+      <div class="segmented-bar" style="margin-bottom:6px;">
+        <button type="button" class="seg-btn ${(state.photoQuality || 'standard') === 'compact' ? 'active' : ''}" onclick="setPhotoQuality('compact')">
+          ⚡ ${t('ཆུང་ཤོས།', 'Compact (~90KB)')}
+        </button>
+        <button type="button" class="seg-btn ${(state.photoQuality || 'standard') === 'standard' ? 'active' : ''}" onclick="setPhotoQuality('standard')">
+          📄 ${t('ཚད་ལྡན།', 'Crisp Standard (~150KB)')}
+        </button>
+        <button type="button" class="seg-btn ${(state.photoQuality || 'standard') === 'hd' ? 'active' : ''}" onclick="setPhotoQuality('hd')">
+          🖼️ ${t('མཐོ་ཤོས།', 'Full HD (~400KB)')}
+        </button>
       </div>
     </div>
 
