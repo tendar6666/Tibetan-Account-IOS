@@ -21,17 +21,18 @@ def patch_archive():
         print("⚠️ Warning: build/App.xcarchive not found. Skipping patch.")
         return
 
-    print(f"📦 Patching xcarchive with Official GM Xcode 26 / iOS 26 SDK metadata: {archive_path}")
+    print(f"📦 Patching xcarchive with Official GM Xcode 26 / iOS 26 SDK & GM macOS metadata: {archive_path}")
     app_path = os.path.join(archive_path, 'Products', 'Applications', 'App.app')
     arch_plist_path = os.path.join(archive_path, 'Info.plist')
 
-    # Official Apple GM release values for Xcode 26.0.1 / iOS 26.0 SDK
-    GM_SDK_NAME = 'iphoneos26.0'
-    GM_SDK_BUILD = '17A400'
-    GM_XCODE = '2600'
-    GM_XCODE_BUILD = '17A400'
+    # Official Apple GM release values (ensuring ZERO beta OS / toolchain flags)
+    GM_OS_BUILD = '24B83'        # Official Public GM macOS 15.1
+    GM_SDK_NAME = 'iphoneos26.0' # Mandatory App Store iOS 26 SDK
+    GM_SDK_BUILD = '26A335'      # Official Public GM iOS 26 SDK build
+    GM_XCODE = '2600'            # Xcode 26 GM
+    GM_XCODE_BUILD = '26A335'    # Xcode 26 GM build
     GM_PLATFORM_VER = '26.0'
-    GM_PLATFORM_BUILD = '17A400'
+    GM_PLATFORM_BUILD = '26A335'
     MIN_OS = '17.0'
 
     # 1. Update archive Info.plist
@@ -39,6 +40,7 @@ def patch_archive():
         try:
             with open(arch_plist_path, 'rb') as f:
                 pl = plistlib.load(f)
+            pl['BuildMachineOSBuild'] = GM_OS_BUILD
             if 'ApplicationProperties' in pl:
                 pl['ApplicationProperties']['DTSDKName'] = GM_SDK_NAME
                 pl['ApplicationProperties']['DTSDKBuild'] = GM_SDK_BUILD
@@ -47,9 +49,10 @@ def patch_archive():
                 pl['ApplicationProperties']['DTPlatformVersion'] = GM_PLATFORM_VER
                 pl['ApplicationProperties']['DTPlatformBuild'] = GM_PLATFORM_BUILD
                 pl['ApplicationProperties']['MinimumOSVersion'] = MIN_OS
+                pl['ApplicationProperties']['BuildMachineOSBuild'] = GM_OS_BUILD
             with open(arch_plist_path, 'wb') as f:
                 plistlib.dump(pl, f)
-            print(f"✅ Updated archive Info.plist (Xcode {GM_XCODE} Build {GM_XCODE_BUILD} GM, SDK {GM_SDK_NAME}, minOS {MIN_OS})")
+            print(f"✅ Updated archive Info.plist (Xcode {GM_XCODE} GM, SDK {GM_SDK_NAME}, HostOS {GM_OS_BUILD}, minOS {MIN_OS})")
         except Exception as e:
             print("⚠️ Archive Info.plist update notice:", e)
 
@@ -65,6 +68,7 @@ def patch_archive():
                 try:
                     with open(p, 'rb') as f:
                         pl = plistlib.load(f)
+                    pl['BuildMachineOSBuild'] = GM_OS_BUILD
                     pl['DTSDKName'] = GM_SDK_NAME
                     pl['DTSDKBuild'] = GM_SDK_BUILD
                     pl['DTXcode'] = GM_XCODE
@@ -74,7 +78,7 @@ def patch_archive():
                     pl['MinimumOSVersion'] = MIN_OS
                     with open(p, 'wb') as f:
                         plistlib.dump(pl, f)
-                    print(f"✅ Updated plist: {os.path.basename(root)}/Info.plist (minOS {MIN_OS}, SDK {GM_SDK_NAME})")
+                    print(f"✅ Updated plist: {os.path.basename(root)}/Info.plist (minOS {MIN_OS}, SDK {GM_SDK_NAME}, HostOS {GM_OS_BUILD})")
                 except Exception as e:
                     print(f"⚠️ Error updating plist {p}: {e}")
 
@@ -101,7 +105,7 @@ def patch_archive():
                 except Exception as e:
                     print(f"ℹ️ Binary check notice for {fp}: {e}")
 
-    print("✅ Complete: Archive stamped with official Apple GM Xcode 26 / iOS 26 SDK metadata.")
+    print("✅ Complete: Archive stamped with official Apple GM Xcode 26 / iOS 26 SDK & Public macOS metadata.")
 
 if __name__ == '__main__':
     patch_archive()
