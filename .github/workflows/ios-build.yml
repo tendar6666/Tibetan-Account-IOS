@@ -182,13 +182,15 @@ jobs:
           <plist version="1.0">
           <dict>
               <key>method</key>
-              <string>app-store-connect</string>
+              <string>app-store</string>
               <key>destination</key>
               <string>upload</string>
               <key>signingStyle</key>
               <string>automatic</string>
               <key>teamID</key>
               <string>$APPLE_TEAM_ID</string>
+              <key>uploadSymbols</key>
+              <true/>
           </dict>
           </plist>
           EOF
@@ -207,10 +209,13 @@ jobs:
             -authenticationKeyIssuerID "$APP_STORE_ISSUER_ID" \
             -authenticationKeyPath "$HOME/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8"
 
+          mkdir -p build/Export
+
           # Upload archive directly to App Store Connect
           xcodebuild -exportArchive \
             -archivePath build/App.xcarchive \
             -exportOptionsPlist ../../exportOptions.plist \
+            -exportPath build/Export \
             -allowProvisioningUpdates \
             -authenticationKeyID "$APP_STORE_KEY_ID" \
             -authenticationKeyIssuerID "$APP_STORE_ISSUER_ID" \
