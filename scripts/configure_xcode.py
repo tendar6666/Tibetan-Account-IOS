@@ -28,6 +28,9 @@ def configure_xcode():
     # Update IPHONEOS_DEPLOYMENT_TARGET to 17.0
     content = re.sub(r'IPHONEOS_DEPLOYMENT_TARGET = [^;]+;', 'IPHONEOS_DEPLOYMENT_TARGET = 17.0;', content)
 
+    # Set TARGETED_DEVICE_FAMILY to 1 (iPhone only) so Apple does NOT require iPad screenshots
+    content = re.sub(r'TARGETED_DEVICE_FAMILY = [^;]+;', 'TARGETED_DEVICE_FAMILY = "1";', content)
+
     # Inject Apple Developer Team ID if provided
     if team_id:
         print(f"Configuring Apple Developer Team ID: {team_id}")
