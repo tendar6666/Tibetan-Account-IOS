@@ -6,7 +6,6 @@ on:
     paths-ignore:
       - 'README.md'
       - '*.md'
-      - 'privacy.html'
   workflow_dispatch:
 
 jobs:
@@ -41,7 +40,7 @@ jobs:
           PLIST="ios/App/App/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Tibetan Account Book'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 'Tibetan Account Book'" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '2.0.0'" "$PLIST" || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '9'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion '10'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion '17.0'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string '17.0'" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Attach photos of bills, receipts, and vouchers directly to your accounting entries.'" "$PLIST" || true
@@ -55,6 +54,9 @@ jobs:
 
           # Generate all iPhone icon sizes and update Contents.json
           python3 scripts/generate_icons.py
+
+          # Inject official native Apple StoreKit 2 + Print bridge into AppDelegate.swift
+          python3 scripts/inject_storekit.py
 
       - name: 5. Configure CocoaPods for Unsigned Build & Compile Native .ipa
         env:
@@ -126,6 +128,10 @@ jobs:
           mkdir -p ~/.private_keys
           echo "$APP_STORE_PRIVATE_KEY" > ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
           chmod 600 ~/.private_keys/AuthKey_${APP_STORE_KEY_ID}.p8
+
+          # Automatically revoke stale ephemeral runner certificates so Xcode has free certificate slots
+          pip3 install --user pyjwt cryptography requests --quiet || pip3 install --break-system-packages pyjwt cryptography requests --quiet || true
+          python3 scripts/cleanup_certs.py
 
           # Inject Apple Developer Team ID and modern iOS 17.0 into Xcode project
           python3 scripts/configure_xcode.py

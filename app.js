@@ -3146,11 +3146,19 @@ function shareReceiptWhatsApp(txId) {
 // ============================================================================
 // IN-APP PURCHASE: ADVANCE AUDIT PACK ($0.99 Non-Consumable Lifetime Unlock)
 // Product ID: com.tenzintendar.tibetanaccountbook.auditpack
-// App Store Guideline 3.1.1 Compliant (Clear pricing, value proposition & Restore)
+// App Store Guideline 3.1.1 Compliant (100% Native Apple StoreKit 2 Ecosystem)
 // ============================================================================
 const AUDIT_PACK_PRODUCT_ID = 'com.tenzintendar.tibetanaccountbook.auditpack';
 
+function getAuditPackPriceLabel() {
+  if (typeof window !== 'undefined' && window.storeKitDisplayPrice) {
+    return String(window.storeKitDisplayPrice);
+  }
+  return '$0.99';
+}
+
 function renderLockedAuditPackCard() {
+  const priceLabel = getAuditPackPriceLabel();
   return `
     <div class="report-card no-print" style="border:2px solid #D97706;background:linear-gradient(180deg, #FFFDF7 0%, #FEF3C7 100%);padding:18px 14px;margin-bottom:14px;box-shadow:0 6px 18px rgba(217,119,6,0.12);border-radius:16px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
@@ -3168,14 +3176,14 @@ function renderLockedAuditPackCard() {
           </div>
         </div>
         <span class="badge" style="background:#F59E0B;color:#FFF;font-size:11.5px;font-weight:900;padding:4px 10px;border-radius:99px;box-shadow:0 2px 6px rgba(245,158,11,0.3);">
-          $0.99 / ₹99
+          ${priceLabel}
         </span>
       </div>
 
       <div style="font-size:12.5px;color:#451A03;line-height:1.6;margin-bottom:14px;">
         ${t(
           'ཚོད་བལྟའི་རྩིས་ཤོག་ (Trial Balance) དང་ལྷག་ཤོག་ (Balance Sheet) ཆ་ཚང་དང་། རྩིས་ཞིབ་ Excel/CSV ཕྱིར་འདྲེན། པར་འདེབས་བཅས་ཐེངས་གཅིག་སྤྲད་དེ་ཚེ་གང་བཀོལ་སྤྱོད་གནང་ཐུབ།',
-          'Unlock the complete Double-Entry Audit Pack: Full 5-column Trial Balance, Automatic Matched Balance Sheet, Bilingual Excel/CSV audit export, and printable reports. One-time lifetime unlock for $0.99 (₹99).'
+          `Unlock the complete Double-Entry Audit Pack: Full 5-column Trial Balance, Automatic Matched Balance Sheet, Bilingual Excel/CSV audit export, and printable reports. One-time lifetime unlock (${priceLabel}).`
         )}
       </div>
 
@@ -3225,7 +3233,7 @@ function renderLockedAuditPackCard() {
       <!-- Action Buttons -->
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button type="button" class="action-btn" style="background:linear-gradient(135deg,#047857,#059669);color:#FFFFFF;padding:12px 14px;font-size:14px;font-weight:900;border-radius:12px;box-shadow:0 4px 12px rgba(5,150,105,0.3);" onclick="openUnlockAuditPackModal()">
-          💳 ${t('Advance Audit Pack ཕྱེ་བ། ($0.99 / ₹99)', 'Unlock Advance Audit Pack ($0.99 / ₹99)')}
+          💳 ${t(`Advance Audit Pack ཕྱེ་བ། (${priceLabel})`, `Unlock Advance Audit Pack (${priceLabel})`)}
         </button>
         <button type="button" class="mini-btn" style="background:transparent;border:none;color:#64748B;font-size:11.5px;padding:6px;text-decoration:underline;cursor:pointer;text-align:center;" onclick="restoreAuditPackPurchases()">
           🔄 ${t('སྔོན་མ་ཉོས་ཟིན་པ་སླར་གསོ། (Restore Purchases)', 'Restore Purchases')}
@@ -3242,6 +3250,7 @@ function renderLockedAuditPackCard() {
 function openUnlockAuditPackModal() {
   const sheet = document.getElementById('modalSheet');
   if (!sheet) return;
+  const priceLabel = getAuditPackPriceLabel();
 
   sheet.innerHTML = `
     <div class="sheet-handle"></div>
@@ -3273,7 +3282,7 @@ function openUnlockAuditPackModal() {
           ${t('ཐེངས་གཅིག་སྤྲོད་པའི་རིན་གོང་། • ONE-TIME PURCHASE', 'ONE-TIME LIFETIME PURCHASE')}
         </div>
         <div style="font-size:26px;font-weight:900;color:#78350F;margin:4px 0;">
-          $0.99 <span style="font-size:14px;font-weight:700;color:#B45309;">(₹99 INR)</span>
+          ${priceLabel}
         </div>
         <div style="font-size:11.5px;color:#047857;font-weight:700;">
           ✨ ${t('ཟླ་རེའི་རིན་དོད་མེད། དྲ་མེད་སྐབས་ཀྱང་བཀོལ་ཐུབ། ནང་མི་མཉམ་སྤྱོད།', 'No subscriptions • Works 100% Offline • Family Sharing')}
@@ -3293,7 +3302,7 @@ function openUnlockAuditPackModal() {
 
       <!-- Purchase CTA -->
       <button type="button" class="action-btn" style="width:100%;background:linear-gradient(135deg,#047857,#059669);color:#FFFFFF;padding:14px;font-size:15px;font-weight:900;border-radius:12px;box-shadow:0 6px 16px rgba(5,150,105,0.3);margin-bottom:10px;" onclick="purchaseAuditPack()">
-        💳 ${t('Advance Audit Pack ཕྱེ་བ། ($0.99 / ₹99)', 'Unlock Advance Audit Pack ($0.99 / ₹99)')}
+        💳 ${t(`Advance Audit Pack ཕྱེ་བ། (${priceLabel})`, `Unlock Advance Audit Pack (${priceLabel})`)}
       </button>
 
       <!-- Apple Guideline 3.1.1 Restore Purchases -->
@@ -3307,20 +3316,20 @@ function openUnlockAuditPackModal() {
 }
 
 function purchaseAuditPack() {
-  // Check for native iOS / Capacitor / WebKit StoreKit bridge
+  // 100% Official Apple StoreKit 2 Bridge via WebKit ScriptMessageHandler
   if (typeof window !== 'undefined' && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.purchaseIAP) {
     try {
       window.webkit.messageHandlers.purchaseIAP.postMessage({
         productId: AUDIT_PACK_PRODUCT_ID
       });
-      showToast(t('Apple App Store སྦྲེལ་མཐུད་བྱེད་བཞིན་པ།...', 'Connecting to App Store...'));
+      showToast(t('Apple App Store སྦྲེལ་མཐུད་བྱེད་བཞིན་པ།...', 'Connecting to Apple App Store...'));
       return;
     } catch (err) {
       console.warn('Native StoreKit postMessage error:', err);
     }
   }
 
-  // Capacitor StoreKit Plugin (if installed)
+  // Capacitor StoreKit Plugin fallback (if present)
   if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PurchasePlugin) {
     window.Capacitor.Plugins.PurchasePlugin.purchase({ productId: AUDIT_PACK_PRODUCT_ID })
       .then(() => {
@@ -3332,19 +3341,8 @@ function purchaseAuditPack() {
     return;
   }
 
-  // Web Browser / Simulator mode: StoreKit sandbox mock
-  showToast(t('🛒 StoreKit སྦྲེལ་མཐུད་བྱེད་བཞིན་པ། ($0.99)', 'Connecting to App Store ($0.99)...'));
-  setTimeout(() => {
-    const confirmed = typeof confirm === 'function' ? confirm(
-      t(
-        'Apple App Store ནང་ Advance Audit Pack ($0.99 / ₹99) ཉོ་བར་གཏན་འཁེལ་ཡིན་ནམ?\n\n(StoreKit Sandbox ཚོད་ལྟའི་སྐབས་སུ་ "OK" མནན་ན་ཁྱད་དེབ་འཕྲལ་དུ་ཕྱེ་ཐུབ།)',
-        'Purchase Advance Audit Pack for $0.99 / ₹99 on Apple App Store?\n\nClick OK to confirm purchase and unlock Trial Balance & Balance Sheet.'
-      )
-    ) : true;
-    if (confirmed) {
-      handleIAPPurchaseSuccess();
-    }
-  }, 300);
+  // Strict Apple Guideline 3.1.1 compliance: never unlock outside Apple StoreKit
+  showToast(t('Apple App Store StoreKit སྦྲེལ་མཐུད་བྱེད་བཞིན་པ།...', 'Connecting to Apple App Store StoreKit...'));
 }
 
 function handleIAPPurchaseSuccess() {
@@ -3359,7 +3357,7 @@ function restoreAuditPackPurchases() {
   if (typeof window !== 'undefined' && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.restoreIAP) {
     try {
       window.webkit.messageHandlers.restoreIAP.postMessage({});
-      showToast(t('Apple App Store ནས་སྔོན་མའི་ཉོས་ཟིན་སླར་གསོ་བྱེད་བཞིན་པ།...', 'Restoring purchases from App Store...'));
+      showToast(t('Apple App Store ནས་སྔོན་མའི་ཉོས་ཟིན་སླར་གསོ་བྱེད་བཞིན་པ།...', 'Restoring purchases from Apple App Store...'));
       return;
     } catch (err) {
       console.warn('Native StoreKit restore error:', err);
@@ -3381,7 +3379,7 @@ function restoreAuditPackPurchases() {
     return;
   }
 
-  showToast(t('🔄 ཉོས་ཟིན་བརྟག་ཞིབ་བྱེད་བཞིན་པ།...', 'Checking purchase history...'));
+  showToast(t('🔄 ཉོས་ཟིན་བརྟག་ཞིབ་བྱེད་བཞིན་པ།...', 'Checking Apple ID purchase history...'));
   setTimeout(() => {
     if (state.isAuditPackUnlocked) {
       showToast(t('✅ Advance Audit Pack སྔོན་ནས་ཉོས་ཟིན་འདུག', 'Advance Audit Pack is already active!'));
@@ -9096,7 +9094,7 @@ function openAppSettingsModal() {
           💎 ${t('Advance Audit Pack (རྩིས་ཞིབ་ཁྱད་དེབ།)', 'Advance Audit Pack')}
         </span>
         <span class="badge" style="background:${state.isAuditPackUnlocked ? '#DCFCE7' : '#FEF3C7'};color:${state.isAuditPackUnlocked ? '#15803D' : '#B45309'};font-weight:800;">
-          ${state.isAuditPackUnlocked ? t('🟢 ཕྱེ་ཟིན། (Active)', '🟢 Active') : '$0.99 / ₹99'}
+          ${state.isAuditPackUnlocked ? t('🟢 ཕྱེ་ཟིན། (Active)', '🟢 Active') : getAuditPackPriceLabel()}
         </span>
       </div>
       <div style="font-size:11.5px;color:#475569;line-height:1.5;margin-bottom:10px;">
@@ -9106,7 +9104,7 @@ function openAppSettingsModal() {
       </div>
       <div style="display:flex;gap:8px;">
         ${!state.isAuditPackUnlocked
-          ? `<button type="button" class="mini-btn" style="flex:1;background:#059669;color:#FFF;border-color:#059669;padding:9px 12px;font-weight:800;" onclick="closeModal(); openUnlockAuditPackModal();">💳 ${t('ཁྱད་དེབ་ཕྱེ་བ། ($0.99)', 'Unlock Pack ($0.99)')}</button>`
+          ? `<button type="button" class="mini-btn" style="flex:1;background:#059669;color:#FFF;border-color:#059669;padding:9px 12px;font-weight:800;" onclick="closeModal(); openUnlockAuditPackModal();">💳 ${t(`ཁྱད་དེབ་ཕྱེ་བ། (${getAuditPackPriceLabel()})`, `Unlock Pack (${getAuditPackPriceLabel()})`)}</button>`
           : ''}
         <button type="button" class="mini-btn" style="${state.isAuditPackUnlocked ? 'width:100%;' : ''}background:#F1F5F9;color:#475569;border-color:#CBD5E1;padding:9px 12px;font-weight:700;" onclick="restoreAuditPackPurchases()">
           🔄 ${t('སྔོན་མ་ཉོས་ཟིན་པ་སླར་གསོ།', 'Restore Purchases')}

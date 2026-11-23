@@ -37,10 +37,6 @@ def configure_xcode():
     # Set TARGETED_DEVICE_FAMILY to 1 (iPhone only) so Apple does NOT require iPad screenshots
     content = re.sub(r'TARGETED_DEVICE_FAMILY = [^;]+;', 'TARGETED_DEVICE_FAMILY = "1";', content)
 
-    # Ensure Release configuration uses Apple Distribution instead of Development
-    content = re.sub(r'"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "iPhone Developer";', '"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";', content)
-    content = re.sub(r'"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "Apple Development";', '"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";', content)
-
     # Inject Apple Developer Team ID if provided
     if team_id:
         print(f"Configuring Apple Developer Team ID: {team_id}")
